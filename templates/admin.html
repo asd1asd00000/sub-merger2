@@ -19,7 +19,7 @@
         .btn-delete { background: #ef4444; color: #fff; }
         .btn-dash { background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         
-        .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
+        .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .btn-add { background: #3b82f6; color: white; padding: 10px 15px; font-size: 14px; }
         .btn-backup { background: #8b5cf6; color: white; padding: 10px 15px; font-size: 14px; }
         .btn-restore { background: #14b8a6; color: white; padding: 10px 15px; font-size: 14px; }
@@ -33,13 +33,13 @@
         .modal h3 { margin-top: 0; color: #3b82f6; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
         .modal h4 { color: #60a5fa; border-bottom: 1px dashed #374151; padding-bottom: 5px; margin-top: 20px; margin-bottom: 15px; }
         .modal label { display: block; margin: 10px 0 5px 0; font-weight: bold; font-size: 14px; color: #d1d5db; }
-        .modal input[type="text"], .modal input[type="number"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
+        .modal input[type="text"], .modal input[type="password"], .modal input[type="number"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
         
-        /* مدال حذف کوچک‌تر */
+        /* مدال حذف اختصاصی */
         #deleteModal .modal-content { max-width: 380px; text-align: center; }
         #deleteModal h3 { color: #ef4444; border-bottom: none; padding-bottom: 0; }
         
-        .table-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 14px; color: #9ca3af; }
+        .table-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 14px; color: #9ca3af; flex-wrap: wrap; gap: 10px; }
         .table-controls select, .table-controls input { background: #1f2937; border: 1px solid #374151; color: #fff; padding: 8px 12px; border-radius: 8px; outline: none; }
         .table-controls input { width: 220px; }
 
@@ -59,8 +59,9 @@
         .page-btn:hover:not(:disabled) { background: #374151; }
         .page-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
 
-        .tabs { display: flex; border-bottom: 1px solid #374151; margin-bottom: 20px; gap: 4px; }
-        .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; }
+        /* استایل تب‌ها با قابلیت شکست خط (flex-wrap) برای جا شدن ۵ تب */
+        .tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid #374151; margin-bottom: 20px; gap: 4px; }
+        .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; min-width: 80px; }
         .tab-btn:hover { color: #fff; background: #2d3748; }
         .tab-btn.active { color: #fff; background: #3b82f6; border-color: #3b82f6; }
         .tab-content { display: none; animation: fadeIn 0.3s; }
@@ -158,6 +159,7 @@
                     <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-telegram')">Telegram</button>
                     <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-email')">Gmail</button>
                     <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-links')">Links</button>
+                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-nodes')" style="background: #27303f; color: #fff; border: 1px solid #4b5563;">Master Nodes</button>
                 </div>
 
                 <div id="tab-general" class="tab-content active">
@@ -194,7 +196,7 @@
                     <input type="text" name="smtp_email" value="{{ .Settings.SmtpEmail }}" placeholder="your-email@gmail.com">
                     
                     <label>App Password (16-chars):</label>
-                    <input type="text" name="smtp_password" value="{{ .Settings.SmtpPassword }}" placeholder="abcd efgh ijkl mnop">
+                    <input type="password" name="smtp_password" value="{{ .Settings.SmtpPassword }}" placeholder="abcd efgh ijkl mnop">
                     
                     <label>Receiver Email:</label>
                     <input type="text" name="smtp_receiver" value="{{ .Settings.SmtpReceiver }}" placeholder="backup-receiver@domain.com">
@@ -210,6 +212,26 @@
                     
                     <label>Announcements URL:</label>
                     <input type="text" name="announcements_url" value="{{ .Settings.AnnouncementsURL }}" placeholder="https://t.me/your_news">
+                </div>
+
+                <div id="tab-nodes" class="tab-content">
+                    <h4>GuardCore API Nodes</h4>
+                    <p style="font-size: 12px; color: #9ca3af; margin-top: 0; direction: rtl; text-align: right;">سیستم هر ۲ دقیقه به این نودها متصل شده، مجموع مصرف کاربران را می‌سنجد و متخلفان را مسدود می‌کند.</p>
+                    
+                    <label style="color: #60a5fa; margin-top: 15px;">Node 1 (پنل اول):</label>
+                    <input type="text" name="node_url_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).URL }}{{ end }}" placeholder="https://core.erfjab.com">
+                    <input type="text" name="node_user_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
+                    <input type="password" name="node_pass_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
+                    
+                    <label style="color: #60a5fa; margin-top: 20px;">Node 2 (پنل دوم - در صورت نیاز):</label>
+                    <input type="text" name="node_url_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).URL }}{{ end }}" placeholder="https://node2.domain.com">
+                    <input type="text" name="node_user_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
+                    <input type="password" name="node_pass_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
+
+                    <label style="color: #60a5fa; margin-top: 20px;">Node 3 (پنل سوم - در صورت نیاز):</label>
+                    <input type="text" name="node_url_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).URL }}{{ end }}" placeholder="https://node3.domain.com">
+                    <input type="text" name="node_user_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
+                    <input type="password" name="node_pass_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
                 </div>
                 
                 <div style="display: flex; gap: 10px; margin-top: 25px;">

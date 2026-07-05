@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/asd1asd00000/sub-merger/internal/db"
-	"github.com/asd1asd00000/sub-merger/internal/web"
+	"github.com/asd1asd00000/sub-merger2/internal/db"
+	"github.com/asd1asd00000/sub-merger2/internal/web"
 )
 
 func main() {

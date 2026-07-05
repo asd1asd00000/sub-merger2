@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/asd1asd00000/sub-merger/internal/db"
-	"github.com/asd1asd00000/sub-merger/internal/subscription"
+	"github.com/asd1asd00000/sub-merger2/internal/db"
+	"github.com/asd1asd00000/sub-merger2/internal/subscription"
 )
 
 func RegisterRoutes(mux *http.ServeMux) {

@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asd1asd00000/sub-merger/internal/api"
-	"github.com/asd1asd00000/sub-merger/internal/models"
+	"github.com/asd1asd00000/sub-merger2/internal/api"
+	"github.com/asd1asd00000/sub-merger2/internal/models"
 )
 
 const DBFile = "/etc/merge_subs/database.json"

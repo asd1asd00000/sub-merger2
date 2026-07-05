@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/asd1asd00000/sub-merger/internal/api"
 	"github.com/asd1asd00000/sub-merger/internal/models"
 )
 
@@ -121,6 +122,52 @@ func SaveSettings(settings models.SystemSettings) error {
 	return os.WriteFile(SettingsFile, file, 0644)
 }
 
+// موتور مانیتورینگ زنده نودها (شاهکار جدید Master Node)
+func StartNodeMonitoring() {
+	ticker := time.NewTicker(2 * time.Minute) // هر ۲ دقیقه نودها را چک می‌کند
+	go func() {
+		for range ticker.C {
+			settings, _ := LoadSettings()
+			if len(settings.Nodes) == 0 {
+				continue // اگر نودی تنظیم نشده بود، اسکیپ می‌شود
+			}
+
+			database, _ := LoadDB()
+			for _, user := range database {
+				if user.VolumeLimit <= 0 {
+					continue // کاربر نامحدود است، رد می‌شویم
+				}
+
+				var totalNetworkUsed int64 = 0
+				
+				// استعلام مصرف از تمامی نودها
+				for _, node := range settings.Nodes {
+					token, err := api.GetToken(node.URL, node.Username, node.Password)
+					if err == nil {
+						used, _ := api.GetUserUsage(node.URL, token, user.Username)
+						totalNetworkUsed += used
+					} else {
+						log.Printf("⚠️ Monitor: Failed to connect to node [%s]: %v", node.URL, err)
+					}
+				}
+
+				// مقایسه با سقف مجاز (Kill-Switch)
+				if totalNetworkUsed >= user.VolumeLimit {
+					log.Printf("⚠️ User [%s] exceeded global limit! Executing Kill-Switch...", user.Username)
+					
+					// ارسال دستور انسداد به تمامی نودها در همان لحظه
+					for _, node := range settings.Nodes {
+						token, err := api.GetToken(node.URL, node.Username, node.Password)
+						if err == nil {
+							api.DisableUser(node.URL, token, user.Username)
+						}
+					}
+				}
+			}
+		}
+	}()
+}
+
 // سیستم جدید و هوشمند زمان‌بندی بکاپ
 func StartAutoBackup() {
 	lastBackupTime = time.Now() // مقداردهی اولیه در زمان استارت سرویس
@@ -218,7 +265,6 @@ func sendToEmail() {
 		return
 	}
 
-	// استفاده از پسورد اختصاصی جیمیل
 	zipPass := settings.SmtpZipPassword
 	if zipPass == "" { zipPass = "12345" }
 

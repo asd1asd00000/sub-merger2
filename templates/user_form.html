@@ -5,41 +5,56 @@
     <title>User Settings</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 30px; display: flex; justify-content: center; }
-        .box { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 600px; }
-        h2 { color: #3b82f6; text-align: center; margin-bottom: 25px; }
-        input[type="text"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
-        .input-group { margin-bottom: 25px; } /* فاصله گذاری مناسب بین بخش ها */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 30px; display: flex; justify-content: center; margin: 0; }
+        .box { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 600px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        h2 { color: #3b82f6; text-align: center; margin-bottom: 25px; margin-top: 0; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #d1d5db; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
+        .input-group { margin-bottom: 25px; } 
         .url-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
-        .btn { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .btn-submit { background: #10b981; color: white; width: 100%; margin-top: 15px; font-size: 15px; }
-        .btn-add { background: #3b82f6; color: white; }
+        .btn { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.8; }
+        .btn-submit { background: #10b981; color: white; width: 100%; font-size: 16px; padding: 12px; margin-top: 10px; }
+        .btn-add { background: #3b82f6; color: white; width: 100%; margin-top: 5px; }
         .btn-remove { background: #ef4444; color: white; }
         .btn-paste { background: #6366f1; color: white; }
-        label { display: block; font-weight: bold; margin-bottom: 12px; font-size: 15px; } /* فاصله لیبل ها */
-        .note { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+        .btn-back { display: inline-block; background: #374151; color: #cbd5e1; padding: 8px 15px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; margin-bottom: 15px; }
+        .note { font-size: 12px; color: #9ca3af; margin-top: 6px; direction: rtl; text-align: right; }
     </style>
 </head>
 <body>
     <div class="box">
-        <h2>👤 User Settings</h2>
+        <a href="/admin" class="btn-back">⬅️ Back to Dashboard</a>
+        <h2>👥 Add / Edit User</h2>
         <form method="POST">
-            
             <div class="input-group">
-                <label>Username:</label>
-                <input type="text" name="username" value="{{ .User.Username }}" placeholder="Optional - Leave empty to auto-detect">
-                <div class="note">💡 If left empty, the system will detect the name from the first valid link.</div>
+                <label>Username (Optional - Auto-detects if empty):</label>
+                <input type="text" name="username" value="{{ .User.Username }}" placeholder="Ali_VIP">
             </div>
-            
+
+            <div class="input-group">
+                <label>Global Volume Limit (GB):</label>
+                <input type="number" step="0.1" name="volume_limit" value="{{ .VolumeGB }}" placeholder="مثلاً: 20 (برای نامحدود 0 بگذارید)" required>
+                <div class="note">💡 سیستم مصرف کل کاربر روی تمامی نودها را جمع می‌زند و پس از عبور از این عدد، اشتراک را در همه نودها مسدود می‌کند.</div>
+            </div>
+
             <div class="input-group">
                 <label>Subscription Links:</label>
                 <div id="url-container">
-                    {{ range .User.URLs }}
-                    <div class="url-row">
-                        <input type="text" name="urls" value="{{ . }}" placeholder="https://..." required>
-                        <button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>
-                        <button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>
-                    </div>
+                    {{ if .User.URLs }}
+                        {{ range .User.URLs }}
+                        <div class="url-row">
+                            <input type="text" name="urls" value="{{ . }}" placeholder="https://..." required>
+                            <button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>
+                            <button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>
+                        </div>
+                        {{ end }}
+                    {{ else }}
+                        <div class="url-row">
+                            <input type="text" name="urls" placeholder="https://..." required>
+                            <button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>
+                            <button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>
+                        </div>
                     {{ end }}
                 </div>
                 <button type="button" class="btn btn-add" onclick="addUrlField()">➕ Add New Link</button>

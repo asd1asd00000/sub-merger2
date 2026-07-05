@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <title>User Management</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 30px; margin: 0; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .box { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; margin-bottom: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        
+        .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 20px; }
+        h2 { color: #3b82f6; margin: 0; font-size: 22px; }
+        
+        .btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; text-decoration: none; font-size: 13px; display: inline-block; text-align: center; transition: opacity 0.2s; font-family: inherit; }
+        .btn:hover { opacity: 0.8; }
+        .btn-logout { background: #374151; color: #cbd5e1; }
+        .btn-edit { background: #f59e0b; color: #fff; margin-right: 5px; }
+        .btn-delete { background: #ef4444; color: #fff; }
+        .btn-dash { background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        
+        .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-add { background: #3b82f6; color: white; padding: 10px 15px; font-size: 14px; }
+        .btn-backup { background: #8b5cf6; color: white; padding: 10px 15px; font-size: 14px; }
+        .btn-restore { background: #14b8a6; color: white; padding: 10px 15px; font-size: 14px; }
+        .btn-settings { background: #64748b; color: white; padding: 10px 15px; font-size: 14px; }
+        
+        /* استایل‌های مشترک پاپ‌آپ‌ها */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal-content { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 480px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; animation: scaleIn 0.2s ease-out; }
+        @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .modal h3 { margin-top: 0; color: #3b82f6; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
+        .modal h4 { color: #60a5fa; border-bottom: 1px dashed #374151; padding-bottom: 5px; margin-top: 20px; margin-bottom: 15px; }
+        .modal label { display: block; margin: 10px 0 5px 0; font-weight: bold; font-size: 14px; color: #d1d5db; }
+        .modal input[type="text"], .modal input[type="number"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
+        
+        /* مدال حذف کوچک‌تر */
+        #deleteModal .modal-content { max-width: 380px; text-align: center; }
+        #deleteModal h3 { color: #ef4444; border-bottom: none; padding-bottom: 0; }
+        
+        .table-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 14px; color: #9ca3af; }
+        .table-controls select, .table-controls input { background: #1f2937; border: 1px solid #374151; color: #fff; padding: 8px 12px; border-radius: 8px; outline: none; }
+        .table-controls input { width: 220px; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+        th, td { padding: 14px 15px; text-align: left; border-bottom: 1px solid #1f2937; }
+        th { color: #9ca3af; font-weight: 600; text-transform: uppercase; border-bottom: 2px solid #374151; }
+        tbody tr:hover { background: #1f2937; }
+        td strong { color: #f3f4f6; font-size: 15px; }
+        .text-center { text-align: center; }
+        
+        .sortable { cursor: pointer; user-select: none; transition: color 0.2s; }
+        .sortable:hover { color: #fff; }
+        
+        .pagination-container { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #9ca3af; }
+        .pagination { display: flex; gap: 5px; }
+        .page-btn { background: #1f2937; border: 1px solid #374151; color: #f3f4f6; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .page-btn:hover:not(:disabled) { background: #374151; }
+        .page-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+
+        .tabs { display: flex; border-bottom: 1px solid #374151; margin-bottom: 20px; gap: 4px; }
+        .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; }
+        .tab-btn:hover { color: #fff; background: #2d3748; }
+        .tab-btn.active { color: #fff; background: #3b82f6; border-color: #3b82f6; }
+        .tab-content { display: none; animation: fadeIn 0.3s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="box">
+            <div class="header-box">
+                <h2>👥 Subscriptions List</h2>
+                <a href="/admin/logout" class="btn btn-logout">Logout</a>
+            </div>
+            
+            <div class="action-buttons">
+                <a href="/admin/add" class="btn btn-add">➕ Add New User</a>
+                <a href="/admin/backup" class="btn btn-backup">💾 Backup JSON</a>
+                <button onclick="document.getElementById('restoreFile').click()" class="btn btn-restore">📂 Restore JSON</button>
+                <button onclick="openModal()" class="btn btn-settings">⚙️ Settings</button>
+            </div>
+            
+            <form id="restoreForm" action="/admin/restore" method="POST" enctype="multipart/form-data" style="display: none;">
+                <input type="file" id="restoreFile" name="backup_file" accept=".json" onchange="document.getElementById('restoreForm').submit()">
+            </form>
+            
+            <div class="table-controls">
+                <div>
+                    Show 
+                    <select id="rowsPerPage">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select> entries
+                </div>
+                <div>Search: <input type="text" id="searchInput" placeholder="Type username..."></div>
+            </div>
+
+            <table id="usersTable">
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th width="30%">Username</th>
+                        <th width="20%" id="sortLastActive" class="sortable" title="Click to sort by date">Last Active ↕️</th>
+                        <th width="25%">Actions</th>
+                        <th width="20%" class="text-center">Dashboard</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    {{ range $index, $item := .Users }}
+                    <tr class="user-row" style="display: none;" data-username="{{ .User.Username }}">
+                        <td class="row-index"></td>
+                        <td><strong>{{ .User.Username }}</strong></td>
+                        <td class="last-active" data-timestamp="{{ .User.LastActive }}">Loading...</td>
+                        <td>
+                            <a href="/admin/edit/{{ .ID }}" class="btn btn-edit">Edit</a>
+                            <button type="button" class="btn btn-delete" onclick="openDeleteModal('/admin/delete/{{ .ID }}', '{{ .User.Username }}')">Delete</button>
+                        </td>
+                        <td class="text-center">
+                            <a href="/sub/{{ .ID }}" target="_blank" class="btn btn-dash">🔗 View</a>
+                        </td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+
+            <div class="pagination-container">
+                <div id="pageInfo">Showing 0 to 0 of 0 entries</div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <h3>⚠️ Confirm Deletion</h3>
+            <p style="color: #d1d5db; font-size: 15px; margin: 20px 0;">
+                Are you sure you want to permanently delete user <br>
+                <strong id="deleteUserName" style="color: #fff; display: inline-block; margin-top: 10px; font-size: 18px;"></strong> ?
+            </p>
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <a id="confirmDeleteBtn" href="#" class="btn btn-delete" style="flex: 1; padding: 10px; font-size: 14px;">Yes, Delete</a>
+                <button type="button" class="btn btn-logout" style="flex: 1; padding: 10px; font-size: 14px;" onclick="closeDeleteModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <h3>⚙️ System Settings</h3>
+            <form action="/admin/settings" method="POST">
+                
+                <div class="tabs">
+                    <button type="button" class="tab-btn active" onclick="switchTab(event, 'tab-general')">General</button>
+                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-telegram')">Telegram</button>
+                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-email')">Gmail</button>
+                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-links')">Links</button>
+                </div>
+
+                <div id="tab-general" class="tab-content active">
+                    <h4>Panel Login</h4>
+                    <label>Admin Username:</label>
+                    <input type="text" name="admin_username" value="{{ .Settings.AdminUsername }}" required>
+                    
+                    <label>Admin Password:</label>
+                    <input type="text" name="admin_password" value="{{ .Settings.AdminPassword }}" required>
+                    
+                    <h4>Global Auto-Backup</h4>
+                    <label>Backup Interval (Hours):</label>
+                    <input type="number" name="backup_interval" value="{{ .Settings.BackupInterval }}" min="1" max="168" required>
+                    <p style="font-size: 12px; color: #9ca3af; margin-top: 5px;">مثال: ۱ یعنی هر یک ساعت، ۲۴ یعنی روزی یک‌بار.</p>
+                </div>
+
+                <div id="tab-telegram" class="tab-content">
+                    <h4>Telegram Auto-Backup</h4>
+                    <label>Bot Token:</label>
+                    <input type="text" name="telegram_token" value="{{ .Settings.TelegramToken }}" placeholder="123456789:ABCDef...">
+                    
+                    <label>Chat ID:</label>
+                    <input type="text" name="telegram_chat_id" value="{{ .Settings.TelegramChatID }}" placeholder="12345678">
+                    
+                    <label>Telegram ZIP Password:</label>
+                    <input type="text" name="telegram_password" value="{{ .Settings.TelegramPassword }}" placeholder="MySecret123!">
+                </div>
+
+                <div id="tab-email" class="tab-content">
+                    <h4>Gmail Auto-Backup (SMTP)</h4>
+                    <p style="font-size: 12px; color: #9ca3af; margin-top: 0; direction: rtl; text-align: right;">💡 تذکر: از رمز عبور اختصاصی برنامه (<span style="color:#ef4444; font-weight: bold;">App Password</span>) استفاده کنید.</p>
+                    
+                    <label>Sender Gmail (Your Email):</label>
+                    <input type="text" name="smtp_email" value="{{ .Settings.SmtpEmail }}" placeholder="your-email@gmail.com">
+                    
+                    <label>App Password (16-chars):</label>
+                    <input type="text" name="smtp_password" value="{{ .Settings.SmtpPassword }}" placeholder="abcd efgh ijkl mnop">
+                    
+                    <label>Receiver Email:</label>
+                    <input type="text" name="smtp_receiver" value="{{ .Settings.SmtpReceiver }}" placeholder="backup-receiver@domain.com">
+                    
+                    <label>Gmail ZIP Password (رمز فایل ایمیل):</label>
+                    <input type="text" name="smtp_zip_password" value="{{ .Settings.SmtpZipPassword }}" placeholder="MySecretEmailPass!">
+                </div>
+
+                <div id="tab-links" class="tab-content">
+                    <h4>Blog & Support Links</h4>
+                    <label>Tutorials URL:</label>
+                    <input type="text" name="tutorials_url" value="{{ .Settings.TutorialsURL }}" placeholder="https://t.me/your_channel">
+                    
+                    <label>Announcements URL:</label>
+                    <input type="text" name="announcements_url" value="{{ .Settings.AnnouncementsURL }}" placeholder="https://t.me/your_news">
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 25px;">
+                    <button type="submit" class="btn btn-add" style="flex: 1; padding: 10px;">Save Settings</button>
+                    <button type="button" class="btn btn-logout" style="flex: 1; padding: 10px;" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // توابع مربوط به مدال تنظیمات
+        function openModal() { document.getElementById('settingsModal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('settingsModal').style.display = 'none'; }
+        
+        // توابع مربوط به مدال دیلیت
+        function openDeleteModal(deleteUrl, username) {
+            document.getElementById('deleteUserName').innerText = username;
+            document.getElementById('confirmDeleteBtn').href = deleteUrl;
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+        function closeDeleteModal() { document.getElementById('deleteModal').style.display = 'none'; }
+
+        // بستن پاپ‌آپ‌ها با کلیک در فضای خالی بیرون آن‌ها
+        window.onclick = function(event) {
+            const settingsModal = document.getElementById('settingsModal');
+            const deleteModal = document.getElementById('deleteModal');
+            if (event.target == settingsModal) { closeModal(); }
+            if (event.target == deleteModal) { closeDeleteModal(); }
+        }
+
+        // تب‌بندی تنظیمات
+        function switchTab(evt, tabId) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+                tabcontent[i].classList.remove("active");
+            }
+            tablinks = document.getElementsByClassName("tab-btn");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].classList.remove("active");
+            }
+            document.getElementById(tabId).style.display = "block";
+            document.getElementById(tabId).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+
+        // کدهای جدول، مرتب‌سازی و صفحه‌بندی
+        document.addEventListener("DOMContentLoaded", function() {
+            const allRows = Array.from(document.querySelectorAll('.user-row'));
+            const rowsPerPageSelect = document.getElementById('rowsPerPage');
+            const searchInput = document.getElementById('searchInput');
+            const tableBody = document.getElementById('tableBody');
+            const pageInfo = document.getElementById('pageInfo');
+            const pagination = document.getElementById('pagination');
+            const sortLastActiveBtn = document.getElementById('sortLastActive');
+
+            let currentPage = 1;
+            let rowsPerPage = parseInt(rowsPerPageSelect.value);
+            let filteredRows = [...allRows];
+            let isAscending = false;
+
+            allRows.forEach(row => {
+                const td = row.querySelector('.last-active');
+                const ts = parseInt(td.getAttribute('data-timestamp'));
+                if (!ts || ts === 0) {
+                    td.innerHTML = '<span style="color: #6b7280; font-style: italic;">Never</span>';
+                } else {
+                    const date = new Date(ts * 1000);
+                    const yyyy = date.getFullYear();
+                    const mm = String(date.getMonth() + 1).padStart(2, '0');
+                    const dd = String(date.getDate()).padStart(2, '0');
+                    const hh = String(date.getHours()).padStart(2, '0');
+                    const min = String(date.getMinutes()).padStart(2, '0');
+                    td.innerText = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+                    td.style.color = "#e5e7eb";
+                    td.style.fontWeight = "500";
+                }
+            });
+
+            sortLastActiveBtn.addEventListener('click', function() {
+                isAscending = !isAscending;
+                this.innerHTML = `Last Active ${isAscending ? '🔼' : '🔽'}`;
+                allRows.sort((a, b) => {
+                    const valA = parseInt(a.querySelector('.last-active').getAttribute('data-timestamp')) || 0;
+                    const valB = parseInt(b.querySelector('.last-active').getAttribute('data-timestamp')) || 0;
+                    return isAscending ? valA - valB : valB - valA;
+                });
+                allRows.forEach(row => tableBody.appendChild(row));
+                const searchTerm = searchInput.value.toLowerCase().trim();
+                filteredRows = allRows.filter(row => row.getAttribute('data-username').toLowerCase().includes(searchTerm));
+                currentPage = 1;
+                renderTable();
+            });
+
+            function renderTable() {
+                allRows.forEach(row => row.style.display = 'none');
+                const start = (currentPage - 1) * rowsPerPage;
+                const end = start + rowsPerPage;
+                const paginatedRows = filteredRows.slice(start, end);
+
+                if (paginatedRows.length === 0) {
+                    pageInfo.innerText = 'No entries';
+                    pagination.innerHTML = '';
+                    return;
+                }
+
+                paginatedRows.forEach((row, index) => {
+                    row.style.display = 'table-row';
+                    row.querySelector('.row-index').innerText = start + index + 1;
+                });
+
+                const actualEnd = Math.min(end, filteredRows.length);
+                pageInfo.innerText = `Showing ${start + 1} to ${actualEnd} of ${filteredRows.length} entries`;
+
+                renderPagination();
+            }
+
+            function renderPagination() {
+                pagination.innerHTML = '';
+                const totalPages = Math.ceil(filteredRows.length / rowsPerPage);
+                if (totalPages <= 1) return;
+
+                const prevBtn = document.createElement('button');
+                prevBtn.className = 'page-btn'; prevBtn.innerText = 'Prev';
+                prevBtn.disabled = currentPage === 1;
+                prevBtn.onclick = () => { if (currentPage > 1) { currentPage--; renderTable(); } };
+                pagination.appendChild(prevBtn);
+
+                let startPage = Math.max(1, currentPage - 2);
+                let endPage = Math.min(totalPages, currentPage + 2);
+
+                for (let i = startPage; i <= endPage; i++) {
+                    const btn = document.createElement('button');
+                    btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
+                    btn.innerText = i;
+                    btn.onclick = () => { currentPage = i; renderTable(); };
+                    pagination.appendChild(btn);
+                }
+
+                const nextBtn = document.createElement('button');
+                nextBtn.className = 'page-btn'; nextBtn.innerText = 'Next';
+                nextBtn.disabled = currentPage === totalPages;
+                nextBtn.onclick = () => { if (currentPage < totalPages) { currentPage++; renderTable(); } };
+                pagination.appendChild(nextBtn);
+            }
+
+            rowsPerPageSelect.addEventListener('change', function() {
+                rowsPerPage = parseInt(this.value); currentPage = 1; renderTable();
+            });
+
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                filteredRows = allRows.filter(row => row.getAttribute('data-username').toLowerCase().includes(searchTerm));
+                currentPage = 1; renderTable();
+            });
+
+            renderTable();
+        });
+    </script>
+</body>
+</html>

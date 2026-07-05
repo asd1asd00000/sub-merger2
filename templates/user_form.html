@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <title>User Settings</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 30px; display: flex; justify-content: center; }
+        .box { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 600px; }
+        h2 { color: #3b82f6; text-align: center; margin-bottom: 25px; }
+        input[type="text"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
+        .input-group { margin-bottom: 25px; } /* فاصله گذاری مناسب بین بخش ها */
+        .url-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+        .btn { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-submit { background: #10b981; color: white; width: 100%; margin-top: 15px; font-size: 15px; }
+        .btn-add { background: #3b82f6; color: white; }
+        .btn-remove { background: #ef4444; color: white; }
+        .btn-paste { background: #6366f1; color: white; }
+        label { display: block; font-weight: bold; margin-bottom: 12px; font-size: 15px; } /* فاصله لیبل ها */
+        .note { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>👤 User Settings</h2>
+        <form method="POST">
+            
+            <div class="input-group">
+                <label>Username:</label>
+                <input type="text" name="username" value="{{ .User.Username }}" placeholder="Optional - Leave empty to auto-detect">
+                <div class="note">💡 If left empty, the system will detect the name from the first valid link.</div>
+            </div>
+            
+            <div class="input-group">
+                <label>Subscription Links:</label>
+                <div id="url-container">
+                    {{ range .User.URLs }}
+                    <div class="url-row">
+                        <input type="text" name="urls" value="{{ . }}" placeholder="https://..." required>
+                        <button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>
+                        <button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>
+                    </div>
+                    {{ end }}
+                </div>
+                <button type="button" class="btn btn-add" onclick="addUrlField()">➕ Add New Link</button>
+            </div>
+
+            <button type="submit" class="btn btn-submit">💾 Save Changes</button>
+        </form>
+    </div>
+    
+    <script>
+        function addUrlField() {
+            var container = document.getElementById('url-container');
+            var row = document.createElement('div');
+            row.className = 'url-row';
+            row.innerHTML = '<input type="text" name="urls" placeholder="https://..." required>' +
+                            '<button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>' +
+                            '<button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>';
+            container.appendChild(row);
+        }
+
+        // تابع خواندن کلیپ‌بورد و قرار دادن در اینپوتِ همان خط
+        async function pasteToInput(button) {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    const inputField = button.parentElement.querySelector('input[name="urls"]');
+                    if (inputField) {
+                        inputField.value = text;
+                    }
+                }
+            } catch (err) {
+                alert('Clipboard access denied. Please paste manually.');
+            }
+        }
+    </script>
+</body>
+</html>

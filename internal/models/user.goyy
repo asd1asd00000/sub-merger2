@@ -1,0 +1,15 @@
+package models
+
+// ساختار دقیق کاربر
+type User struct {
+	Username  string   `json:"username"`
+	URLs      []string `json:"urls"`
+	CreatedAt int64    `json:"created_at"`
+}
+
+// ساختار تنظیمات بکاپ تلگرام
+type TelegramSettings struct {
+	Token    string `json:"token"`
+	ChatID   string `json:"chat_id"`
+	Password string `json:"password"`
+}

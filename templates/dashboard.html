@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>وضعیت اشتراک سابسکریپشن</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: {{ .CardBG }}; border-radius: 20px; padding: 30px; width: 100%; max-width: 440px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); border: 1px solid #374151; text-align: center; }
+        .welcome-text { text-align: right; font-size: 14px; color: #9ca3af; margin-bottom: 5px; font-weight: 500; }
+        .welcome-text span { color: #3b82f6; font-weight: bold; }
+        .global-alarm { display: {{ .AlarmDisplay }}; background-color: #ef4444; color: #ffffff; padding: 12px; border-radius: 12px; font-weight: bold; margin-bottom: 20px; font-size: 14px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        
+        .title-container { border-bottom: 1px solid #1f2937; padding-bottom: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
+        h2.custom-title { font-family: Tahoma, "Microsoft Sans Serif", sans-serif; color: #e5e7eb; margin: 0; font-size: 20px; font-weight: bold; letter-spacing: -0.5px; }
+        
+        .status-badge { font-size: 14px; font-weight: bold; background-color: {{ .StatusColor }}; color: #ffffff; padding: 6px 14px; border-radius: 25px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.15); letter-spacing: 0.5px; }
+
+        h3 { color: #9ca3af; font-size: 16px; text-align: right; margin: 25px 0 10px 0; border-right: 3px solid #3b82f6; padding-right: 8px; }
+        .info-row { display: flex; justify-content: space-between; margin: 14px 0; padding-bottom: 8px; border-bottom: 1px dashed #1f2937; font-size: 15px; text-align: right; align-items: center; }
+        .label { color: #9ca3af; }
+        .value { font-weight: bold; color: #ffffff; text-transform: uppercase; }
+        
+        .progress-box { background: #1f2937; border-radius: 50px; height: 14px; width: 100%; margin: 25px 0 10px 0; overflow: hidden; border: 1px solid #374151; }
+        .progress-bar { background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {{ .Percent }}%; border-radius: 50px; }
+        .percent-text { font-size: 13px; color: #9ca3af; margin-bottom: 20px; text-align: center; }
+        
+        .main-btn { display: block; width: 100%; padding: 10px; margin: 8px 0; border-radius: 10px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #3b82f6; text-decoration: none; box-sizing: border-box; cursor: pointer; }
+        .btn-all-configs { background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; border: none; font-size: 14px; margin-bottom: 15px; }
+        
+        .sub-panel { padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #2d3748; text-align: right; }
+        .panel-title { font-size: 15px; font-weight: bold; color: #60a5fa; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
+        .panel-row { display: flex; justify-content: space-between; font-size: 13px; color: #cbd5e1; margin: 4px 0; }
+        
+        .panel-progress-box { background: #374151; border-radius: 50px; height: 6px; width: 100%; margin: 10px 0; overflow: hidden; }
+        .panel-progress-bar { background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; border-radius: 50px; }
+        
+        .action-container { display: flex; gap: 8px; margin-top: 12px; width: 100%; }
+        .btn-action { flex: 1; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; text-align: center; border: 1px solid #3b82f6; text-decoration: none; display: inline-block; }
+        .btn-copy { background: #1f2937; color: #60a5fa; }
+        .btn-link { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; border: none; }
+        .footer { font-size: 12px; color: #4b5563; margin-top: 25px; text-align: center; }
+
+        /* استایل اختصاصی دو دکمه وبلاگ زیر منوی کپی اصلی */
+        .blog-container { display: flex; gap: 10px; margin-top: 5px; margin-bottom: 15px; width: 100%; }
+        .btn-blog { flex: 1; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: bold; text-align: center; text-decoration: none; border: 1px solid transparent; transition: opacity 0.2s; display: inline-block; box-sizing: border-box; }
+        .btn-blog:hover { opacity: 0.8; }
+        .btn-tutorials { background: #111827; color: #38bdf8; border-color: #38bdf8; }
+        .btn-news { background: #111827; color: #f43f5e; border-color: #f43f5e; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="welcome-text">کاربر <span>{{ .CustomUsername }}</span> خوش آمدید:</div>
+        
+        <div class="title-container">
+            <h2 class="custom-title">وضعیت اشتراک شما:</h2>
+            <span class="status-badge">{{ .StatusText }}</span>
+        </div>
+        
+        <div class="global-alarm">⚠️ حجم یا زمان اشتراک شما به اتمام رسیده است!</div>
+        
+        <div class="info-row"><span class="label">حجم کل دوره:</span><span class="value">{{ .TotalTxt }}</span></div>
+        <div class="info-row"><span class="label">حجم مصرف شده:</span><span class="value">{{ .UsedTxt }}</span></div>
+        <div class="info-row"><span class="label">ترافیک باقی‌مانده:</span><span class="value" style="color: #10b981;">{{ .RemTxt }}</span></div>
+        <div class="info-row"><span class="label">تاریخ انقضای کلی:</span><span class="value" style="color: #ef4444; direction: ltr;">{{ .ExpDate }}</span></div>
+        
+        <div class="progress-box"><div class="progress-bar"></div></div>
+        <div class="percent-text">شما {{ .Percent }}٪ از حجم کل را مصرف کرده‌اید.</div>
+        
+        <button class="main-btn btn-all-configs" id="btn-raw-all">📋 کپی متنی کل کانفیگ‌ها (اتصال فوری)</button>
+        
+        <div class="blog-container">
+            <a href="{{ .TutorialsURL }}" target="_blank" class="btn-blog btn-tutorials">📚 آموزش‌ها</a>
+            <a href="{{ .AnnouncementsURL }}" target="_blank" class="btn-blog btn-news">📢 اطلاعیه‌های مهم</a>
+        </div>
+        
+        <h3>مشخصات و لینک پنل ها</h3>
+        {{ range .PanelsData }}
+        <div class="sub-panel" style="background: {{ .BG }};">
+            <div class="panel-title">
+                <span>{{ .Title }}</span>
+                <span style="color:#a1a1aa; font-size:12px; font-weight: normal;">انقضا: {{ .Exp }}</span>
+            </div>
+            
+            <div class="panel-row">
+                <span>حجم مصرفی / کل:</span>
+                <span style="direction:ltr; text-transform: uppercase;">{{ .UsedTxt }} / {{ .TotalTxt }}</span>
+            </div>
+            
+            <div class="panel-progress-box">
+                <div class="panel-progress-bar" style="width: {{ .Percent }}%;"></div>
+            </div>
+
+            <div class="action-container">
+                <button class="btn-action btn-copy" id="btn-{{ .Index }}" onclick="directCopyText('{{ .URL }}', 'btn-{{ .Index }}', 'کپی لینک ساب')">کپی لینک ساب</button>
+                <a href="{{ .URL }}" target="_blank" class="btn-action btn-link">ورود به پنل</a>
+            </div>
+        </div>
+        {{ end }}
+        <div class="footer">سیستم تجمیع هوشمند سابسکریپشن</div>
+    </div>
+
+    <script>
+        document.getElementById('btn-raw-all').addEventListener('click', function() {
+            directCopyText(`{{ .JSSafeConfigs }}`, 'btn-raw-all', '📋 کپی متنی کل کانفیگ‌ها (اتصال فوری)');
+        });
+
+        function directCopyText(textToCopy, buttonId, originalText) {
+            var textArea = document.createElement("textarea");
+            textArea.value = textToCopy;
+            textArea.style.position = "fixed"; textArea.style.top = "0"; textArea.style.left = "0";
+            textArea.style.width = "2em"; textArea.style.height = "2em"; textArea.style.padding = "0";
+            textArea.style.border = "none"; textArea.style.outline = "none"; textArea.style.boxShadow = "none";
+            textArea.style.background = "transparent";
+            document.body.appendChild(textArea);
+            textArea.focus(); textArea.select();
+            try {
+                var successful = document.execCommand('copy');
+                if(successful) {
+                    var btn = document.getElementById(buttonId);
+                    btn.innerText = "کپی شد! ✔️";
+                    if(buttonId === 'btn-raw-all') { btn.style.background = "#059669"; } 
+                    else { btn.style.borderColor = "#10b981"; btn.style.color = "#10b981"; }
+                    setTimeout(function() {
+                        btn.innerText = originalText;
+                        if(buttonId === 'btn-raw-all') { btn.style.background = "linear-gradient(135deg, #10b981, #059669)"; } 
+                        else { btn.style.borderColor = "#3b82f6"; btn.style.color = "#60a5fa"; }
+                    }, 2000);
+                }
+            } catch (err) { alert("عدم دسترسی به کلیپ‌بورد"); }
+            document.body.removeChild(textArea);
+        }
+    </script>
+</body>
+</html>

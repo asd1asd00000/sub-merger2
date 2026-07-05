@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
@@ -11,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/asd1asd00000/sub-merger/internal/db"
-	"github.com/asd1asd00000/sub-merger/internal/fetcher"
-	"github.com/asd1asd00000/sub-merger/internal/models"
-	"github.com/asd1asd00000/sub-merger/internal/parser"
+	"github.com/asd1asd00000/sub-merger2/internal/db"
+	"github.com/asd1asd00000/sub-merger2/internal/fetcher"
+	"github.com/asd1asd00000/sub-merger2/internal/models"
+	"github.com/asd1asd00000/sub-merger2/internal/parser"
 )
 
 func checkAuth(r *http.Request) bool {
@@ -137,11 +138,16 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 			username = autoDetectName(urls)
 		}
 
+		// تبدیل گیگابایت به بایت
+		volumeGB, _ := strconv.ParseFloat(r.FormValue("volume_limit"), 64)
+		volumeLimitBytes := int64(volumeGB * 1024 * 1024 * 1024)
+
 		newID := generateUUID()
 		database[newID] = models.User{
-			Username:  username,
-			URLs:      urls,
-			CreatedAt: time.Now().Unix(),
+			Username:    username,
+			URLs:        urls,
+			VolumeLimit: volumeLimitBytes,
+			CreatedAt:   time.Now().Unix(),
 		}
 
 		db.SaveDB(database)
@@ -151,7 +157,8 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, _ := template.ParseFiles("templates/user_form.html")
 	emptyUser := models.User{URLs: []string{"", ""}}
-	tmpl.Execute(w, map[string]models.User{"User": emptyUser})
+	// ارسال مقدار 0 به عنوان پیش‌فرض حجم در فرم جدید
+	tmpl.Execute(w, map[string]interface{}{"User": emptyUser, "VolumeGB": 0})
 }
 
 func handleEditUser(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +185,10 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			username = autoDetectName(urls)
 		}
 
+		// تبدیل حجم دریافتی (گیگابایت) به بایت برای ذخیره
+		volumeGB, _ := strconv.ParseFloat(r.FormValue("volume_limit"), 64)
+		user.VolumeLimit = int64(volumeGB * 1024 * 1024 * 1024)
+
 		user.Username = username
 		user.URLs = urls
 		
@@ -187,8 +198,11 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// تبدیل بایت به گیگابایت برای نمایش در فرم ویرایش
+	volumeGB := float64(user.VolumeLimit) / (1024 * 1024 * 1024)
+
 	tmpl, _ := template.ParseFiles("templates/user_form.html")
-	tmpl.Execute(w, map[string]models.User{"User": user})
+	tmpl.Execute(w, map[string]interface{}{"User": user, "VolumeGB": volumeGB})
 }
 
 func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -253,10 +267,24 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// پردازش تایمر بکاپ
 		backupInterval, _ := strconv.Atoi(r.FormValue("backup_interval"))
 		if backupInterval < 1 {
-			backupInterval = 1 // حداقل ۱ ساعت
+			backupInterval = 1
+		}
+
+		// پردازش و ذخیره نودهای GuardCore
+		var nodes []models.Node
+		for i := 1; i <= 3; i++ {
+			nUrl := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_url_%d", i)))
+			nUser := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_user_%d", i)))
+			nPass := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_pass_%d", i)))
+			
+			// پاک کردن اسلش انتهایی آدرس نود (برای جلوگیری از خطای API)
+			nUrl = strings.TrimRight(nUrl, "/")
+			
+			if nUrl != "" {
+				nodes = append(nodes, models.Node{URL: nUrl, Username: nUser, Password: nPass})
+			}
 		}
 
 		settings := models.SystemSettings{
@@ -275,9 +303,12 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			
 			TutorialsURL:     strings.TrimSpace(r.FormValue("tutorials_url")),
 			AnnouncementsURL: strings.TrimSpace(r.FormValue("announcements_url")),
+			
+			Nodes:            nodes, // اعمال نودها در سیستم
 		}
 		
 		db.SaveSettings(settings)
+		
 		go db.TriggerInitialSync(settings)
 
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)

@@ -59,7 +59,7 @@
         .page-btn:hover:not(:disabled) { background: #374151; }
         .page-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
 
-        /* Tabs Styles with wrap support */
+        /* Tabs Styles */
         .tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid #374151; margin-bottom: 20px; gap: 4px; }
         .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; min-width: 80px; }
         .tab-btn:hover { color: #fff; background: #2d3748; }
@@ -340,7 +340,7 @@
                     const dd = String(date.getDate()).padStart(2, '0');
                     const hh = String(date.getHours()).padStart(2, '0');
                     const min = String(date.getMinutes()).padStart(2, '0');
-                    td.innerText = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+                    td.innerText = yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + min;
                     td.style.color = "#e5e7eb";
                     td.style.fontWeight = "500";
                 }
@@ -348,7 +348,7 @@
 
             sortLastActiveBtn.addEventListener('click', function() {
                 isAscending = !isAscending;
-                this.innerHTML = `Last Active ${isAscending ? '🔼' : '🔽'}`;
+                this.innerHTML = 'Last Active ' + (isAscending ? '🔼' : '🔽');
                 allRows.sort((a, b) => {
                     const valA = parseInt(a.querySelector('.last-active').getAttribute('data-timestamp')) || 0;
                     const valB = parseInt(b.querySelector('.last-active').getAttribute('data-timestamp')) || 0;
@@ -379,7 +379,7 @@
                 });
 
                 const actualEnd = Math.min(end, filteredRows.length);
-                pageInfo.innerText = `Showing ${start + 1} to ${actualEnd} of ${filteredRows.length} entries`;
+                pageInfo.innerText = 'Showing ' + (start + 1) + ' to ' + actualEnd + ' of ' + filteredRows.length + ' entries';
 
                 renderPagination();
             }
@@ -397,3 +397,34 @@
 
                 let startPage = Math.max(1, currentPage - 2);
                 let endPage = Math.min(totalPages, currentPage + 2);
+
+                for (let i = startPage; i <= endPage; i++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'page-btn ' + (i === currentPage ? 'active' : '');
+                    btn.innerText = i;
+                    btn.onclick = () => { currentPage = i; renderTable(); };
+                    pagination.appendChild(btn);
+                }
+
+                const nextBtn = document.createElement('button');
+                nextBtn.className = 'page-btn'; nextBtn.innerText = 'Next';
+                nextBtn.disabled = currentPage === totalPages;
+                nextBtn.onclick = () => { if (currentPage < totalPages) { currentPage++; renderTable(); } };
+                pagination.appendChild(nextBtn);
+            }
+
+            rowsPerPageSelect.addEventListener('change', function() {
+                rowsPerPage = parseInt(this.value); currentPage = 1; renderTable();
+            });
+
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                filteredRows = allRows.filter(row => row.getAttribute('data-username').toLowerCase().includes(searchTerm));
+                currentPage = 1; renderTable();
+            });
+
+            renderTable();
+        });
+    </script>
+</body>
+</html>

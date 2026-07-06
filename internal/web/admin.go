@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
@@ -135,7 +136,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		var automaticallyGeneratedURLs []string
 
-		// 🚀 بخش جادویی: ساخت اکانت روی تمام نودهای فعال GuardCore به صورت خودکار
+		// ساخت اکانت روی تمام نودهای فعال GuardCore به صورت خودکار
 		for _, node := range settings.Nodes {
 			token, err := api.GetToken(node.URL, node.Username, node.Password)
 			if err == nil {

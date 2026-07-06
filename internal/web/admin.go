@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
@@ -12,10 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asd1asd00000/sub-merger2/internal/api"
 	"github.com/asd1asd00000/sub-merger2/internal/db"
-	"github.com/asd1asd00000/sub-merger2/internal/fetcher"
 	"github.com/asd1asd00000/sub-merger2/internal/models"
-	"github.com/asd1asd00000/sub-merger2/internal/parser"
 )
 
 func checkAuth(r *http.Request) bool {
@@ -29,28 +27,11 @@ func generateUUID() string {
 	return hex.EncodeToString(bytes)
 }
 
-func autoDetectName(urls []string) string {
-	htmlHeaders := map[string]string{
-		"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-		"Accept":     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-	}
-	results := fetcher.FetchConcurrent(urls, htmlHeaders)
-	for _, res := range results {
-		if res.Error == nil {
-			if name := parser.ExtractCleanTitle(res.Content); name != "" {
-				return name
-			}
-		}
-	}
-	return "Unnamed User"
-}
-
 func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		r.ParseForm()
 		username := r.FormValue("username")
 		password := r.FormValue("password")
-
 		settings, _ := db.LoadSettings()
 
 		if username == settings.AdminUsername && password == settings.AdminPassword {
@@ -64,12 +45,10 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
-		
 		tmpl, _ := template.ParseFiles("templates/login.html")
 		tmpl.Execute(w, map[string]string{"Error": "Invalid username or password."})
 		return
 	}
-
 	tmpl, _ := template.ParseFiles("templates/login.html")
 	tmpl.Execute(w, nil)
 }
@@ -107,16 +86,29 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		return userList[i].User.CreatedAt > userList[j].User.CreatedAt
 	})
 
+	// بررسی وضعیت زنده بودن نودها برای نمایش نشانگر سلامت API
+	nodeStatus := make(map[string]string)
+	for _, node := range settings.Nodes {
+		token, err := api.GetToken(node.URL, node.Username, node.Password)
+		if err != nil {
+			nodeStatus[node.URL] = "🔴 Disconnected"
+		} else if token != "" {
+			nodeStatus[node.URL] = "🟢 Connected"
+		}
+	}
+
 	tmpl, _ := template.ParseFiles("templates/admin.html")
 	
 	data := struct {
-		Users    []UserItem
-		Host     string
-		Settings models.SystemSettings
+		Users      []UserItem
+		Host       string
+		Settings   models.SystemSettings
+		NodeStatus map[string]string
 	}{
-		Users:    userList,
-		Host:     r.Host,
-		Settings: settings,
+		Users:      userList,
+		Host:       r.Host,
+		Settings:   settings,
+		NodeStatus: nodeStatus,
 	}
 	tmpl.Execute(w, data)
 }
@@ -130,22 +122,39 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		r.ParseForm()
 		database, _ := db.LoadDB()
+		settings, _ := db.LoadSettings()
 		
 		username := strings.TrimSpace(r.FormValue("username"))
-		urls := r.Form["urls"]
-
 		if username == "" {
-			username = autoDetectName(urls)
+			http.Error(w, "Username is required for Master/Node tracking!", http.StatusBadRequest)
+			return
 		}
 
-		// تبدیل گیگابایت به بایت
 		volumeGB, _ := strconv.ParseFloat(r.FormValue("volume_limit"), 64)
 		volumeLimitBytes := int64(volumeGB * 1024 * 1024 * 1024)
+
+		var automaticallyGeneratedURLs []string
+
+		// 🚀 بخش جادویی: ساخت اکانت روی تمام نودهای فعال GuardCore به صورت خودکار
+		for _, node := range settings.Nodes {
+			token, err := api.GetToken(node.URL, node.Username, node.Password)
+			if err == nil {
+				subLink, err := api.CreateSubscription(node.URL, token, username)
+				if err == nil && subLink != "" {
+					automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
+				}
+			}
+		}
+
+		// اگر هیچ نودی متصل نبود، اجازه ثبت فرم با لینک دستی رو به عنوان زاپاس می‌دیم
+		if len(automaticallyGeneratedURLs) == 0 {
+			automaticallyGeneratedURLs = r.Form["urls"]
+		}
 
 		newID := generateUUID()
 		database[newID] = models.User{
 			Username:    username,
-			URLs:        urls,
+			URLs:        automaticallyGeneratedURLs,
 			VolumeLimit: volumeLimitBytes,
 			CreatedAt:   time.Now().Unix(),
 		}
@@ -156,8 +165,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpl, _ := template.ParseFiles("templates/user_form.html")
-	emptyUser := models.User{URLs: []string{"", ""}}
-	// ارسال مقدار 0 به عنوان پیش‌فرض حجم در فرم جدید
+	emptyUser := models.User{URLs: []string{""}}
 	tmpl.Execute(w, map[string]interface{}{"User": emptyUser, "VolumeGB": 0})
 }
 
@@ -181,15 +189,12 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		username := strings.TrimSpace(r.FormValue("username"))
 		urls := r.Form["urls"]
 
-		if username == "" {
-			username = autoDetectName(urls)
+		if username != "" {
+			user.Username = username
 		}
-
-		// تبدیل حجم دریافتی (گیگابایت) به بایت برای ذخیره
+		
 		volumeGB, _ := strconv.ParseFloat(r.FormValue("volume_limit"), 64)
 		user.VolumeLimit = int64(volumeGB * 1024 * 1024 * 1024)
-
-		user.Username = username
 		user.URLs = urls
 		
 		database[userID] = user
@@ -198,7 +203,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// تبدیل بایت به گیگابایت برای نمایش در فرم ویرایش
 	volumeGB := float64(user.VolumeLimit) / (1024 * 1024 * 1024)
 
 	tmpl, _ := template.ParseFiles("templates/user_form.html")
@@ -272,14 +276,12 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			backupInterval = 1
 		}
 
-		// پردازش و ذخیره نودهای GuardCore
 		var nodes []models.Node
 		for i := 1; i <= 3; i++ {
 			nUrl := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_url_%d", i)))
 			nUser := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_user_%d", i)))
 			nPass := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_pass_%d", i)))
 			
-			// پاک کردن اسلش انتهایی آدرس نود (برای جلوگیری از خطای API)
 			nUrl = strings.TrimRight(nUrl, "/")
 			
 			if nUrl != "" {
@@ -291,24 +293,19 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			AdminUsername:    adminUser,
 			AdminPassword:    adminPass,
 			BackupInterval:   backupInterval,
-			
 			TelegramToken:    strings.TrimSpace(r.FormValue("telegram_token")),
 			TelegramChatID:   strings.TrimSpace(r.FormValue("telegram_chat_id")),
 			TelegramPassword: r.FormValue("telegram_password"),
-			
 			SmtpEmail:        strings.TrimSpace(r.FormValue("smtp_email")),
 			SmtpPassword:     strings.TrimSpace(r.FormValue("smtp_password")),
 			SmtpReceiver:     strings.TrimSpace(r.FormValue("smtp_receiver")),
 			SmtpZipPassword:  strings.TrimSpace(r.FormValue("smtp_zip_password")),
-			
 			TutorialsURL:     strings.TrimSpace(r.FormValue("tutorials_url")),
 			AnnouncementsURL: strings.TrimSpace(r.FormValue("announcements_url")),
-			
-			Nodes:            nodes, // اعمال نودها در سیستم
+			Nodes:            nodes,
 		}
 		
 		db.SaveSettings(settings)
-		
 		go db.TriggerInitialSync(settings)
 
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)

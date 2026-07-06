@@ -126,23 +126,35 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 		
 		username := strings.TrimSpace(r.FormValue("username"))
 		if username == "" {
-			http.Error(w, "Username is required for Master/Node tracking!", http.StatusBadRequest)
+			http.Error(w, "Username is required!", http.StatusBadRequest)
 			return
 		}
 
-		// سیستم تمیزکننده رشته‌ها برای رفع باگ صفر شدن حجم
+		// دریافت حجم تجمیعی پایه
 		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
-		volStr = strings.ReplaceAll(volStr, ",", ".") // تبدیل ویرگول به نقطه
+		volStr = strings.ReplaceAll(volStr, ",", ".")
 		volumeGB, _ := strconv.ParseFloat(volStr, 64)
 		volumeLimitBytes := int64(volumeGB * 1024 * 1024 * 1024)
 
+		// پردازش زمان خاتمه اشتراک (دریافت به صورت تعداد روز مجاز)
+		expireDays, _ := strconv.Atoi(r.FormValue("expire_days"))
+		var expireTimestamp int64 = 0
+		if expireDays > 0 {
+			expireTimestamp = time.Now().AddDate(0, 0, expireDays).Unix()
+		}
+
+		// محاسبه دقیق فرمول ضریب حجم نودها بر اساس تعداد کل نودهای فعال
+		numNodes := int64(len(settings.Nodes))
+		if numNodes == 0 { numNodes = 1 }
+		nodeVolumeLimit := volumeLimitBytes * numNodes
+
 		var automaticallyGeneratedURLs []string
 
-		// ساخت اکانت روی نودها با ارسال حجم مجاز
+		// ساخت اکانت روی نودها با ارسال حجم چندبرابری محاسبه شده
 		for _, node := range settings.Nodes {
 			token, err := api.GetToken(node.URL, node.Username, node.Password)
 			if err == nil {
-				subLink, err := api.CreateSubscription(node.URL, token, username, volumeLimitBytes)
+				subLink, err := api.CreateSubscription(node.URL, token, username, nodeVolumeLimit)
 				if err == nil && subLink != "" {
 					automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
 				}
@@ -157,7 +169,8 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 		database[newID] = models.User{
 			Username:    username,
 			URLs:        automaticallyGeneratedURLs,
-			VolumeLimit: volumeLimitBytes,
+			VolumeLimit: volumeLimitBytes, // ذخیره حجم واقعی تجمیعی در مستر
+			ExpireAt:    expireTimestamp,   // ذخیره زمان خاتمه در مستر
 			CreatedAt:   time.Now().Unix(),
 		}
 
@@ -168,7 +181,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, _ := template.ParseFiles("templates/user_form.html")
 	emptyUser := models.User{URLs: []string{""}}
-	tmpl.Execute(w, map[string]interface{}{"User": emptyUser, "VolumeGB": 0})
+	tmpl.Execute(w, map[string]interface{}{"User": emptyUser, "VolumeGB": 0, "ExpireDays": 0})
 }
 
 func handleEditUser(w http.ResponseWriter, r *http.Request) {
@@ -195,12 +208,18 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			user.Username = username
 		}
 		
-		// سیستم تمیزکننده رشته‌ها برای ادیت
 		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
 		volStr = strings.ReplaceAll(volStr, ",", ".")
 		volumeGB, _ := strconv.ParseFloat(volStr, 64)
-		
 		user.VolumeLimit = int64(volumeGB * 1024 * 1024 * 1024)
+		
+		expireDays, _ := strconv.Atoi(r.FormValue("expire_days"))
+		if expireDays > 0 {
+			user.ExpireAt = time.Now().AddDate(0, 0, expireDays).Unix()
+		} else {
+			user.ExpireAt = 0
+		}
+		
 		user.URLs = urls
 		
 		database[userID] = user
@@ -210,9 +229,15 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	volumeGB := float64(user.VolumeLimit) / (1024 * 1024 * 1024)
+	
+	var remainingDays int64 = 0
+	if user.ExpireAt > 0 {
+		remainingDays = (user.ExpireAt - time.Now().Unix()) / 86400
+		if remainingDays < 0 { remainingDays = 0 }
+	}
 
 	tmpl, _ := template.ParseFiles("templates/user_form.html")
-	tmpl.Execute(w, map[string]interface{}{"User": user, "VolumeGB": volumeGB})
+	tmpl.Execute(w, map[string]interface{}{"User": user, "VolumeGB": volumeGB, "ExpireDays": remainingDays})
 }
 
 func handleDeleteUser(w http.ResponseWriter, r *http.Request) {

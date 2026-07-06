@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/asd1asd00000/sub-merger2/internal/db" // وارد کردن دیتابیس برای خواندن تنظیمات
+	"github.com/asd1asd00000/sub-merger2/internal/db"
 	"github.com/asd1asd00000/sub-merger2/internal/fetcher"
 	"github.com/asd1asd00000/sub-merger2/internal/models"
 	"github.com/asd1asd00000/sub-merger2/internal/parser"
@@ -43,8 +43,8 @@ type DashboardData struct {
 	TotalDl          int64
 	TotalTot         int64
 	TotalExp         int64
-	TutorialsURL     string // فیلد جدید در داشبورد
-	AnnouncementsURL string // فیلد جدید در داشبورد
+	TutorialsURL     string
+	AnnouncementsURL string
 }
 
 var (
@@ -107,8 +107,7 @@ func ProcessUserData(userID string, user models.User) DashboardData {
 	}
 	configResults := fetcher.FetchConcurrent(user.URLs, configHeaders)
 
-	var totalUp, totalDl, totalTot int64
-	var expires []int64
+	var totalUp, totalDl int64
 	var allConfigsRaw []string
 	var panelsData []PanelData
 
@@ -138,13 +137,8 @@ func ProcessUserData(userID string, user models.User) DashboardData {
 
 		totalUp += up
 		totalDl += dl
-		totalTot += tot
-		if exp > 0 {
-			expires = append(expires, exp)
-		}
 
 		title := fmt.Sprintf("پنل %c", 65+i)
-
 		used := up + dl
 		pBg := "#1f2937"
 		if (tot > 0 && used >= tot) || (exp > 0 && time.Now().Unix() > exp) {
@@ -177,19 +171,14 @@ func ProcessUserData(userID string, user models.User) DashboardData {
 	}
 
 	usedBytes := totalUp + totalDl
-	remBytes := int64(0)
-	if totalTot-usedBytes > 0 {
-		remBytes = totalTot - usedBytes
-	}
 
-	totalExp := int64(0)
-	if len(expires) > 0 {
-		totalExp = expires[0]
-		for _, e := range expires {
-			if e > totalExp {
-				totalExp = e
-			}
-		}
+	// 🔥 اعمال قدرت Master: خواندن حجم و انقضا مستقیماً از دیتابیس خودمان
+	totalTot := user.VolumeLimit
+	totalExp := user.ExpireAt
+
+	remBytes := int64(0)
+	if totalTot > 0 && totalTot-usedBytes > 0 {
+		remBytes = totalTot - usedBytes
 	}
 
 	percent := 0
@@ -214,7 +203,6 @@ func ProcessUserData(userID string, user models.User) DashboardData {
 	configB64 := base64.StdEncoding.EncodeToString([]byte(allConfigsMerged))
 	jsSafeConfigs := strings.ReplaceAll(allConfigsMerged, "`", "\\`")
 
-	// بارگذاری لینک‌های داینامیک وبلاگ از تنظیمات سیستم
 	settings, _ := db.LoadSettings()
 
 	return DashboardData{
@@ -235,7 +223,7 @@ func ProcessUserData(userID string, user models.User) DashboardData {
 		TotalDl:          totalDl,
 		TotalTot:         totalTot,
 		TotalExp:         totalExp,
-		TutorialsURL:     settings.TutorialsURL,     // انتساب لینک آموزش
-		AnnouncementsURL: settings.AnnouncementsURL, // انتساب لینک اطلاعیه
+		TutorialsURL:     settings.TutorialsURL,
+		AnnouncementsURL: settings.AnnouncementsURL,
 	}
 }

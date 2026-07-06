@@ -60,14 +60,10 @@ func SaveDB(data map[string]models.User) error {
 	defer mu.Unlock()
 
 	err := os.MkdirAll(filepath.Dir(DBFile), 0755)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 
 	file, err := json.MarshalIndent(data, "", "    ")
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 
 	return os.WriteFile(DBFile, file, 0644)
 }
@@ -97,9 +93,7 @@ func LoadSettings() (models.SystemSettings, error) {
 		SaveSettings(settings)
 	}
 	
-	if settings.BackupInterval <= 0 {
-		settings.BackupInterval = 1
-	}
+	if settings.BackupInterval <= 0 { settings.BackupInterval = 1 }
 
 	return settings, err
 }
@@ -109,27 +103,21 @@ func SaveSettings(settings models.SystemSettings) error {
 	defer mu.Unlock()
 
 	err := os.MkdirAll(filepath.Dir(SettingsFile), 0755)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 
 	file, err := json.MarshalIndent(settings, "", "    ")
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 
 	return os.WriteFile(SettingsFile, file, 0644)
 }
 
-// 🤖 موتور هوشمند مانیتورینگ تجمیعی (استفاده از پسوند _1 و _2 برای تست شبیه‌ساز)
+// 🤖 موتور هوشمند مانیتورینگ چند-پلتفرمی
 func StartNodeMonitoring() {
 	ticker := time.NewTicker(2 * time.Minute)
 	go func() {
 		for range ticker.C {
 			settings, _ := LoadSettings()
-			if len(settings.Nodes) == 0 {
-				continue
-			}
+			if len(settings.Nodes) == 0 { continue }
 
 			database, _ := LoadDB()
 			now := time.Now().Unix()
@@ -146,15 +134,25 @@ func StartNodeMonitoring() {
 					var totalNetworkUsed int64 = 0
 					
 					for i, node := range settings.Nodes {
-						token, err := api.GetToken(node.URL, node.Username, node.Password)
-						if err == nil {
-							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1) // بازیابی ali_1 و ali_2
-							used, _ := api.GetUserUsage(node.URL, token, nodeUsername)
-							totalNetworkUsed += used
+						var token string
+						var err error
+						var used int64
+						nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1)
+
+						if node.PanelType == "marzban" {
+							token, err = api.GetMarzbanToken(node.URL, node.Username, node.Password)
+							if err == nil {
+								used, _ = api.GetMarzbanUserUsage(node.URL, token, nodeUsername)
+							}
+						} else {
+							token, err = api.GetToken(node.URL, node.Username, node.Password)
+							if err == nil {
+								used, _ = api.GetUserUsage(node.URL, token, nodeUsername)
+							}
 						}
+						totalNetworkUsed += used
 					}
 
-					// رادار زنده در ترمینال (فقط کاربرانی که مصرف داشتند رو چاپ میکنه)
 					if totalNetworkUsed > 0 {
 						log.Printf("📊 Live Radar -> User: [%s] | Used: %d bytes | Limit: %d bytes", user.Username, totalNetworkUsed, user.VolumeLimit)
 					}
@@ -167,11 +165,17 @@ func StartNodeMonitoring() {
 
 				if shouldDisable {
 					for i, node := range settings.Nodes {
-						token, err := api.GetToken(node.URL, node.Username, node.Password)
-						if err == nil {
-							// ارسال نام اختصاصی هر نود برای قطع شدن
-							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1)
-							api.DisableSubscriptions(node.URL, token, []string{nodeUsername})
+						nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1)
+						if node.PanelType == "marzban" {
+							token, err := api.GetMarzbanToken(node.URL, node.Username, node.Password)
+							if err == nil {
+								api.DisableMarzbanUsers(node.URL, token, []string{nodeUsername})
+							}
+						} else {
+							token, err := api.GetToken(node.URL, node.Username, node.Password)
+							if err == nil {
+								api.DisableSubscriptions(node.URL, token, []string{nodeUsername})
+							}
 						}
 					}
 				}
@@ -212,7 +216,6 @@ func TriggerInitialSync(settings models.SystemSettings) {
 		jsonPayload, _ := json.Marshal(payload)
 		http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
 	}
-
 	time.Sleep(2 * time.Second)
 	go sendToTelegram()
 	go sendToEmail()
@@ -222,7 +225,6 @@ func TriggerInitialSync(settings models.SystemSettings) {
 func sendToTelegram() {
 	settings, _ := LoadSettings()
 	if settings.TelegramToken == "" || settings.TelegramChatID == "" { return }
-
 	zipPass := settings.TelegramPassword
 	if zipPass == "" { zipPass = "12345" }
 
@@ -238,7 +240,6 @@ func sendToTelegram() {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	writer.WriteField("chat_id", settings.TelegramChatID)
-
 	fileName := fmt.Sprintf("SubMerger_Backup_%s.zip", time.Now().Format("2006-01-02_15-04"))
 	part, err := writer.CreateFormFile("document", fileName)
 	if err != nil { return }
@@ -259,7 +260,6 @@ func sendToTelegram() {
 func sendToEmail() {
 	settings, _ := LoadSettings()
 	if settings.SmtpEmail == "" || settings.SmtpPassword == "" || settings.SmtpReceiver == "" { return }
-
 	zipPass := settings.SmtpZipPassword
 	if zipPass == "" { zipPass = "12345" }
 
@@ -299,7 +299,6 @@ func sendToEmail() {
 		if end > len(encodedFile) { end = len(encodedFile) }
 		body.WriteString(encodedFile[i:end] + "\r\n")
 	}
-
 	body.WriteString(fmt.Sprintf("\r\n--%s--\r\n", boundary))
 	_ = smtp.SendMail("smtp.gmail.com:587", auth, from, []string{to}, body.Bytes())
 }

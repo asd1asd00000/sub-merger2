@@ -87,7 +87,6 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		return userList[i].User.CreatedAt > userList[j].User.CreatedAt
 	})
 
-	// بررسی وضعیت زنده بودن نودها برای نمایش نشانگر سلامت API
 	nodeStatus := make(map[string]string)
 	for _, node := range settings.Nodes {
 		token, err := api.GetToken(node.URL, node.Username, node.Password)
@@ -131,23 +130,25 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		volumeGB, _ := strconv.ParseFloat(r.FormValue("volume_limit"), 64)
+		// سیستم تمیزکننده رشته‌ها برای رفع باگ صفر شدن حجم
+		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
+		volStr = strings.ReplaceAll(volStr, ",", ".") // تبدیل ویرگول به نقطه
+		volumeGB, _ := strconv.ParseFloat(volStr, 64)
 		volumeLimitBytes := int64(volumeGB * 1024 * 1024 * 1024)
 
 		var automaticallyGeneratedURLs []string
 
-		// ساخت اکانت روی تمام نودهای فعال GuardCore به صورت خودکار
+		// ساخت اکانت روی نودها با ارسال حجم مجاز
 		for _, node := range settings.Nodes {
 			token, err := api.GetToken(node.URL, node.Username, node.Password)
 			if err == nil {
-				subLink, err := api.CreateSubscription(node.URL, token, username)
+				subLink, err := api.CreateSubscription(node.URL, token, username, volumeLimitBytes)
 				if err == nil && subLink != "" {
 					automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
 				}
 			}
 		}
 
-		// اگر هیچ نودی متصل نبود، اجازه ثبت فرم با لینک دستی رو به عنوان زاپاس می‌دیم
 		if len(automaticallyGeneratedURLs) == 0 {
 			automaticallyGeneratedURLs = r.Form["urls"]
 		}
@@ -194,7 +195,11 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			user.Username = username
 		}
 		
-		volumeGB, _ := strconv.ParseFloat(r.FormValue("volume_limit"), 64)
+		// سیستم تمیزکننده رشته‌ها برای ادیت
+		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
+		volStr = strings.ReplaceAll(volStr, ",", ".")
+		volumeGB, _ := strconv.ParseFloat(volStr, 64)
+		
 		user.VolumeLimit = int64(volumeGB * 1024 * 1024 * 1024)
 		user.URLs = urls
 		

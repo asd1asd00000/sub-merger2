@@ -130,31 +130,29 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// دریافت حجم تجمیعی پایه
 		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
 		volStr = strings.ReplaceAll(volStr, ",", ".")
 		volumeGB, _ := strconv.ParseFloat(volStr, 64)
 		volumeLimitBytes := int64(volumeGB * 1024 * 1024 * 1024)
 
-		// پردازش زمان خاتمه اشتراک (دریافت به صورت تعداد روز مجاز)
 		expireDays, _ := strconv.Atoi(r.FormValue("expire_days"))
 		var expireTimestamp int64 = 0
 		if expireDays > 0 {
 			expireTimestamp = time.Now().AddDate(0, 0, expireDays).Unix()
 		}
 
-		// محاسبه دقیق فرمول ضریب حجم نودها بر اساس تعداد کل نودهای فعال
 		numNodes := int64(len(settings.Nodes))
 		if numNodes == 0 { numNodes = 1 }
 		nodeVolumeLimit := volumeLimitBytes * numNodes
 
 		var automaticallyGeneratedURLs []string
 
-		// ساخت اکانت روی نودها با ارسال حجم چندبرابری محاسبه شده
-		for _, node := range settings.Nodes {
+		// 🚀 تغییر اصلی: تخصیص نام کاربری اختصاصی با پسوند شماره نود برای شبیه‌سازی تک نودی
+		for i, node := range settings.Nodes {
 			token, err := api.GetToken(node.URL, node.Username, node.Password)
 			if err == nil {
-				subLink, err := api.CreateSubscription(node.URL, token, username, nodeVolumeLimit)
+				nodeUsername := fmt.Sprintf("%s_%d", username, i+1) // ایجاد ساختار ali_1 و ali_2
+				subLink, err := api.CreateSubscription(node.URL, token, nodeUsername, nodeVolumeLimit)
 				if err == nil && subLink != "" {
 					automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
 				}
@@ -167,10 +165,10 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		newID := generateUUID()
 		database[newID] = models.User{
-			Username:    username,
+			Username:    username, // نام اصلی در مستر ثابت می‌ماند
 			URLs:        automaticallyGeneratedURLs,
-			VolumeLimit: volumeLimitBytes, // ذخیره حجم واقعی تجمیعی در مستر
-			ExpireAt:    expireTimestamp,   // ذخیره زمان خاتمه در مستر
+			VolumeLimit: volumeLimitBytes,
+			ExpireAt:    expireTimestamp,
 			CreatedAt:   time.Now().Unix(),
 		}
 

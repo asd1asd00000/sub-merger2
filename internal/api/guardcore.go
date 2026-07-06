@@ -43,15 +43,60 @@ func GetToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("token not found")
 }
 
-// ساخت مستقیم کاربر روی نود GuardCore (حل مشکل List Payload)
+// 🤖 تابع هوشمند برای استخراج اتوماتیک لیست سرویس‌ها از نود
+func GetNodeServiceIDs(nodeURL, token string) []int {
+	req, _ := http.NewRequest("GET", nodeURL+"/api/services", nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+	
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	
+	// اگر نتوانست سرویس‌ها را بخواند، حداقل آیدی شماره 1 (دیفالت) را برمی‌گرداند تا ساخت متوقف نشود
+	if err != nil { return []int{1} } 
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	
+	// جستجو برای یافتن آیدی سرویس‌ها در پاسخ سرور
+	var listResult []map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &listResult); err == nil {
+		var ids []int
+		for _, s := range listResult {
+			if id, ok := s["id"].(float64); ok { ids = append(ids, int(id)) }
+		}
+		if len(ids) > 0 { return ids }
+	}
+
+	var mapResult map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &mapResult); err == nil {
+		for _, val := range mapResult {
+			if list, ok := val.([]interface{}); ok {
+				var ids []int
+				for _, item := range list {
+					if sMap, ok := item.(map[string]interface{}); ok {
+						if id, ok := sMap["id"].(float64); ok { ids = append(ids, int(id)) }
+					}
+				}
+				if len(ids) > 0 { return ids }
+			}
+		}
+	}
+	
+	return []int{1} // مقدار زاپاس
+}
+
+// ساخت مستقیم کاربر روی نود GuardCore
 func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64) (string, error) {
-	// GuardCore API به جای یک آبجکت، یک آرایه (لیست) از کاربران را می‌خواهد
-	payload := []map[string]interface{}{
-		{
-			"username":   username,
-			"status":     "active",
-			"data_limit": volumeLimitBytes,
-		},
+	// اول لیست تمام سرویس‌های تیک‌خورده نود را می‌گیریم
+	serviceIDs := GetNodeServiceIDs(nodeURL, token)
+
+	// بدنه درخواست دقیقاً طبق نیاز GuardCore مونتاژ می‌شود
+	payload := map[string]interface{}{
+		"username":     username,
+		"status":       "active",
+		"limit_usage":  volumeLimitBytes, // حجم
+		"limit_expire": 0,                // زمان صفر = نامحدود (مدیریت قطع توسط خود Sub-Merger انجام می‌شود)
+		"service_ids":  serviceIDs,       // اختصاص تمام سرویس‌ها
 	}
 	jsonData, _ := json.Marshal(payload)
 
@@ -71,28 +116,19 @@ func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64)
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
-	// پردازش هوشمند: استخراج لینک در صورتی که پاسخ سرور لیست یا آبجکت باشد
-	var rawResult interface{}
-	json.NewDecoder(resp.Body).Decode(&rawResult)
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
 
-	var firstResult map[string]interface{}
-	if listRes, ok := rawResult.([]interface{}); ok && len(listRes) > 0 {
-		firstResult, _ = listRes[0].(map[string]interface{})
-	} else if mapRes, ok := rawResult.(map[string]interface{}); ok {
-		firstResult = mapRes
+	secret, _ := result["secret"].(string)
+	tag, _ := result["tag"].(string)
+
+	// ساخت لینک اتوماتیک
+	if secret != "" && tag != "" {
+		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
 	}
 
-	if firstResult != nil {
-		secret, _ := firstResult["secret"].(string)
-		tag, _ := firstResult["tag"].(string)
-
-		if secret != "" && tag != "" {
-			return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
-		}
-
-		if subURL, ok := firstResult["subscription_url"].(string); ok {
-			return subURL, nil
-		}
+	if subURL, ok := result["subscription_url"].(string); ok {
+		return subURL, nil
 	}
 
 	return "", fmt.Errorf("could not extract subscription link properties")

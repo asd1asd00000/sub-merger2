@@ -121,7 +121,7 @@ func SaveSettings(settings models.SystemSettings) error {
 	return os.WriteFile(SettingsFile, file, 0644)
 }
 
-// 🤖 موتور هوشمند مانیتورینگ تجمیعی (کنترل حجم کل + تاریخ انقضا + قطع گروهی با متد POST)
+// 🤖 موتور هوشمند مانیتورینگ تجمیعی با پشتیبانی از پسوندهای داینامیک نودها
 func StartNodeMonitoring() {
 	ticker := time.NewTicker(2 * time.Minute)
 	go func() {
@@ -137,37 +137,37 @@ func StartNodeMonitoring() {
 			for _, user := range database {
 				var shouldDisable = false
 				
-				// ۱. بررسی خاتمه زمان اشتراک در سرور مرکزی
+				// ۱. بررسی خاتمه زمان اشتراک در سرور مرکزی مستر
 				if user.ExpireAt > 0 && now >= user.ExpireAt {
 					log.Printf("⏳ User [%s] subscription expired! Triggering Kill-Switch...", user.Username)
 					shouldDisable = true
 				}
 
-				// ۲. بررسی حجم تجمیعی نودها (اگر زمان تمام نشده بود حجم را چک کن)
+				// ۲. بررسی حجم تجمیعی نودها با نام‌های پسوند دار
 				if !shouldDisable && user.VolumeLimit > 0 {
 					var totalNetworkUsed int64 = 0
-					for _, node := range settings.Nodes {
+					for i, node := range settings.Nodes {
 						token, err := api.GetToken(node.URL, node.Username, node.Password)
 						if err == nil {
-							used, _ := api.GetUserUsage(node.URL, token, user.Username)
+							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1) // بازسازی نام ali_1 یا ali_2
+							used, _ := api.GetUserUsage(node.URL, token, nodeUsername)
 							totalNetworkUsed += used
 						}
 					}
 
-					// مقایسه با حجم تجمیعی ثبت شده در دیتابیس Master
 					if totalNetworkUsed >= user.VolumeLimit {
 						log.Printf("⚠️ User [%s] exceeded Aggregated Volume Limit (%d >= %d)! Triggering Kill-Switch...", user.Username, totalNetworkUsed, user.VolumeLimit)
 						shouldDisable = true
 					}
 				}
 
-				// ۳. اجرای دستور قطع گروهی امن (POST /api/subscriptions/disable) در صورت نقض قوانین
+				// ۳. قطع اکانت‌ها با نام اختصاصی هر نود به صورت امن (POST)
 				if shouldDisable {
-					for _, node := range settings.Nodes {
+					for i, node := range settings.Nodes {
 						token, err := api.GetToken(node.URL, node.Username, node.Password)
 						if err == nil {
-							// ارسال نام کاربری در آرایه جهت غیرفعال‌سازی طبق داکس جدید
-							api.DisableSubscriptions(node.URL, token, []string{user.Username})
+							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1)
+							api.DisableSubscriptions(node.URL, token, []string{nodeUsername})
 						}
 					}
 				}

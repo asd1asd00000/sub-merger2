@@ -47,14 +47,14 @@
                     {{ if .User.URLs }}
                         {{ range .User.URLs }}
                         <div class="url-row">
-                            <input type="text" name="urls" value="{{ . }}" placeholder="https://..." required>
+                            <input type="text" name="urls" value="{{ . }}" placeholder="Optional manual fallback link...">
                             <button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>
                             <button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>
                         </div>
                         {{ end }}
                     {{ else }}
                         <div class="url-row">
-                            <input type="text" name="urls" placeholder="https://..." required>
+                            <input type="text" name="urls" placeholder="Optional manual fallback link...">
                             <button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>
                             <button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>
                         </div>
@@ -72,7 +72,7 @@
             var container = document.getElementById('url-container');
             var row = document.createElement('div');
             row.className = 'url-row';
-            row.innerHTML = '<input type="text" name="urls" placeholder="https://..." required>' +
+            row.innerHTML = '<input type="text" name="urls" placeholder="Optional manual fallback link...">' +
                             '<button type="button" class="btn btn-paste" onclick="pasteToInput(this)">Paste</button>' +
                             '<button type="button" class="btn btn-remove" onclick="this.parentElement.remove()">Delete</button>';
             container.appendChild(row);

@@ -66,15 +66,15 @@ func GetNodeServiceIDs(nodeURL, token string) []int {
 	return []int{1}
 }
 
-// ساخت مستقیم کاربر روی نود GuardCore با اعمال حجم چندبرابری
+// ساخت مستقیم کاربر روی نود GuardCore
 func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64) (string, error) {
 	serviceIDs := GetNodeServiceIDs(nodeURL, token)
 
 	payload := []map[string]interface{}{
 		{
 			"username":     username,
-			"limit_usage":  nodeVolumeLimit, // حجم ضرب‌شده در تعداد نودها
-			"limit_expire": 0,               // 0 یعنی نامحدود روی نود (کنترل زمان با مستر است)
+			"limit_usage":  nodeVolumeLimit, 
+			"limit_expire": 0,               
 			"service_ids":  serviceIDs,
 			"enabled":      true,
 		},
@@ -121,9 +121,9 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64) 
 	return "", fmt.Errorf("could not extract subscription link properties")
 }
 
-// خواندن مصرف کل کاربر از نود
+// 🎯 خواندن دقیق مصرف از مسیر صحیح طبق داکس GuardCore
 func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s/usages", nodeURL, targetUser), nil)
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s", nodeURL, targetUser), nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -134,23 +134,17 @@ func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	var totalUsed int64 = 0
-	if usages, ok := result["usages"].([]interface{}); ok {
-		for _, u := range usages {
-			if usageMap, isMap := u.(map[string]interface{}); isMap {
-				up, _ := usageMap["upload"].(float64)
-				down, _ := usageMap["download"].(float64)
-				totalUsed += int64(up + down)
-			}
-		}
-	} else if used, ok := result["used_traffic"].(float64); ok {
-		totalUsed = int64(used)
+	// طبق داکس شما، فیلد current_usage مصرف فعلی را برمی‌گرداند
+	if current, ok := result["current_usage"].(float64); ok {
+		return int64(current), nil
+	} else if total, ok := result["total_usage"].(float64); ok {
+		return int64(total), nil
 	}
 	
-	return totalUsed, nil
+	return 0, fmt.Errorf("could not find usage data")
 }
 
-// 🛡️ متد جدید قطع کاربر با استفاده از داکس برودکست POST /api/subscriptions/disable
+// 🛡️ قطع گروهی اکانت‌ها با مستندات POST
 func DisableSubscriptions(nodeURL, token string, usernames []string) error {
 	payload := map[string][]string{
 		"usernames": usernames,
@@ -168,6 +162,6 @@ func DisableSubscriptions(nodeURL, token string, usernames []string) error {
 	if err != nil { return err }
 	defer resp.Body.Close()
 
-	log.Printf("🛡️ Sent Bulk Disable via POST for users %v to node [%s] - Status: %d", usernames, nodeURL, resp.StatusCode)
+	log.Printf("🛡️ Sent Bulk Disable (Kill-Switch) for users %v to node [%s] - Status: %d", usernames, nodeURL, resp.StatusCode)
 	return nil
 }

@@ -19,7 +19,7 @@
         .btn-remove { background: #ef4444; color: white; }
         .btn-paste { background: #6366f1; color: white; }
         .btn-back { display: inline-block; background: #374151; color: #cbd5e1; padding: 8px 15px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; margin-bottom: 15px; }
-        .note { font-size: 12px; color: #9ca3af; margin-top: 6px; direction: rtl; text-align: right; }
+        .note { font-size: 12px; color: #9ca3af; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -27,19 +27,22 @@
         <a href="/admin" class="btn-back">⬅️ Back to Dashboard</a>
         <h2>👥 Add / Edit User</h2>
         <form method="POST">
+            
             <div class="input-group">
-                <label>Username (Optional - Auto-detects if empty):</label>
-                <input type="text" name="username" value="{{ .User.Username }}" placeholder="Ali_VIP">
+                <label>Username (Required for Master Nodes):</label>
+                <input type="text" name="username" value="{{ .User.Username }}" placeholder="e.g., Ali_VIP" required>
+                <div class="note">⚠️ The system will automatically create an account with this exact username on all connected API Nodes.</div>
             </div>
 
             <div class="input-group">
                 <label>Global Volume Limit (GB):</label>
-                <input type="number" step="0.1" name="volume_limit" value="{{ .VolumeGB }}" placeholder="مثلاً: 20 (برای نامحدود 0 بگذارید)" required>
-                <div class="note">💡 سیستم مصرف کل کاربر روی تمامی نودها را جمع می‌زند و پس از عبور از این عدد، اشتراک را در همه نودها مسدود می‌کند.</div>
+                <input type="number" step="0.1" name="volume_limit" value="{{ .VolumeGB }}" placeholder="e.g., 20 (Set to 0 for unlimited)" required>
+                <div class="note">💡 Total usage is summed up across all nodes. The user will be disabled across all nodes if this limit is reached.</div>
             </div>
 
             <div class="input-group">
-                <label>Subscription Links:</label>
+                <label>Subscription Links (Auto-generated / Fallback):</label>
+                <div class="note" style="margin-bottom: 10px; margin-top: -5px;">🔗 Links will be auto-filled by the API upon creation. You can also add manual links as fallbacks.</div>
                 <div id="url-container">
                     {{ if .User.URLs }}
                         {{ range .User.URLs }}
@@ -75,7 +78,6 @@
             container.appendChild(row);
         }
 
-        // تابع خواندن کلیپ‌بورد و قرار دادن در اینپوتِ همان خط
         async function pasteToInput(button) {
             try {
                 const text = await navigator.clipboard.readText();

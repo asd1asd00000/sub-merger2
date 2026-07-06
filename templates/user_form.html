@@ -35,9 +35,15 @@
             </div>
 
             <div class="input-group">
-                <label>Global Volume Limit (GB):</label>
+                <label>Aggregated Volume Limit (GB):</label>
                 <input type="number" step="0.1" name="volume_limit" value="{{ .VolumeGB }}" placeholder="e.g., 20 (Set to 0 for unlimited)" required>
-                <div class="note">💡 Total usage is summed up across all nodes. The user will be disabled across all nodes if this limit is reached.</div>
+                <div class="note">💡 This is the base aggregated volume. The nodes will be provisioned with multiplied volume to let Master handle the absolute block.</div>
+            </div>
+
+            <div class="input-group">
+                <label>Subscription Duration (Days):</label>
+                <input type="number" name="expire_days" value="{{ .ExpireDays }}" placeholder="e.g., 30 (Set to 0 for unlimited duration)" required>
+                <div class="note">⏳ Total valid days for this subscription before central Master server cuts the connection.</div>
             </div>
 
             <div class="input-group">

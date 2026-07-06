@@ -121,7 +121,7 @@ func SaveSettings(settings models.SystemSettings) error {
 	return os.WriteFile(SettingsFile, file, 0644)
 }
 
-// 🤖 موتور هوشمند مانیتورینگ تجمیعی با پشتیبانی از پسوندهای داینامیک نودها
+// 🤖 موتور هوشمند مانیتورینگ تجمیعی (استفاده از پسوند _1 و _2 برای تست شبیه‌ساز)
 func StartNodeMonitoring() {
 	ticker := time.NewTicker(2 * time.Minute)
 	go func() {
@@ -137,35 +137,39 @@ func StartNodeMonitoring() {
 			for _, user := range database {
 				var shouldDisable = false
 				
-				// ۱. بررسی خاتمه زمان اشتراک در سرور مرکزی مستر
 				if user.ExpireAt > 0 && now >= user.ExpireAt {
 					log.Printf("⏳ User [%s] subscription expired! Triggering Kill-Switch...", user.Username)
 					shouldDisable = true
 				}
 
-				// ۲. بررسی حجم تجمیعی نودها با نام‌های پسوند دار
 				if !shouldDisable && user.VolumeLimit > 0 {
 					var totalNetworkUsed int64 = 0
+					
 					for i, node := range settings.Nodes {
 						token, err := api.GetToken(node.URL, node.Username, node.Password)
 						if err == nil {
-							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1) // بازسازی نام ali_1 یا ali_2
+							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1) // بازیابی ali_1 و ali_2
 							used, _ := api.GetUserUsage(node.URL, token, nodeUsername)
 							totalNetworkUsed += used
 						}
 					}
 
+					// رادار زنده در ترمینال (فقط کاربرانی که مصرف داشتند رو چاپ میکنه)
+					if totalNetworkUsed > 0 {
+						log.Printf("📊 Live Radar -> User: [%s] | Used: %d bytes | Limit: %d bytes", user.Username, totalNetworkUsed, user.VolumeLimit)
+					}
+
 					if totalNetworkUsed >= user.VolumeLimit {
-						log.Printf("⚠️ User [%s] exceeded Aggregated Volume Limit (%d >= %d)! Triggering Kill-Switch...", user.Username, totalNetworkUsed, user.VolumeLimit)
+						log.Printf("🚨 MASTER KILL-SWITCH ACTIVATED! User [%s] exceeded global limit.", user.Username)
 						shouldDisable = true
 					}
 				}
 
-				// ۳. قطع اکانت‌ها با نام اختصاصی هر نود به صورت امن (POST)
 				if shouldDisable {
 					for i, node := range settings.Nodes {
 						token, err := api.GetToken(node.URL, node.Username, node.Password)
 						if err == nil {
+							// ارسال نام اختصاصی هر نود برای قطع شدن
 							nodeUsername := fmt.Sprintf("%s_%d", user.Username, i+1)
 							api.DisableSubscriptions(node.URL, token, []string{nodeUsername})
 						}

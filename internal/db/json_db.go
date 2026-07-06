@@ -26,7 +26,7 @@ const DBFile = "/etc/merge_subs/database.json"
 const SettingsFile = "/etc/merge_subs/settings.json"
 
 var mu sync.RWMutex
-var lastBackupTime time.Time // متغیر ذخیره زمان آخرین بکاپ
+var lastBackupTime time.Time
 
 func generateSecurePassword(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -84,7 +84,7 @@ func LoadSettings() (models.SystemSettings, error) {
 		settings = models.SystemSettings{
 			AdminUsername:  "admin",
 			AdminPassword:  randomPass,
-			BackupInterval: 1, // پیش‌فرض ۱ ساعت
+			BackupInterval: 1,
 		}
 		SaveSettings(settings)
 		return settings, nil
@@ -97,7 +97,6 @@ func LoadSettings() (models.SystemSettings, error) {
 		SaveSettings(settings)
 	}
 	
-	// جلوگیری از صفر بودن تایمر در صورت آپدیت سیستم
 	if settings.BackupInterval <= 0 {
 		settings.BackupInterval = 1
 	}
@@ -122,44 +121,53 @@ func SaveSettings(settings models.SystemSettings) error {
 	return os.WriteFile(SettingsFile, file, 0644)
 }
 
-// موتور مانیتورینگ زنده نودها (شاهکار جدید Master Node)
+// 🤖 موتور هوشمند مانیتورینگ تجمیعی (کنترل حجم کل + تاریخ انقضا + قطع گروهی با متد POST)
 func StartNodeMonitoring() {
-	ticker := time.NewTicker(2 * time.Minute) // هر ۲ دقیقه نودها را چک می‌کند
+	ticker := time.NewTicker(2 * time.Minute)
 	go func() {
 		for range ticker.C {
 			settings, _ := LoadSettings()
 			if len(settings.Nodes) == 0 {
-				continue // اگر نودی تنظیم نشده بود، اسکیپ می‌شود
+				continue
 			}
 
 			database, _ := LoadDB()
+			now := time.Now().Unix()
+
 			for _, user := range database {
-				if user.VolumeLimit <= 0 {
-					continue // کاربر نامحدود است، رد می‌شویم
-				}
-
-				var totalNetworkUsed int64 = 0
+				var shouldDisable = false
 				
-				// استعلام مصرف از تمامی نودها
-				for _, node := range settings.Nodes {
-					token, err := api.GetToken(node.URL, node.Username, node.Password)
-					if err == nil {
-						used, _ := api.GetUserUsage(node.URL, token, user.Username)
-						totalNetworkUsed += used
-					} else {
-						log.Printf("⚠️ Monitor: Failed to connect to node [%s]: %v", node.URL, err)
-					}
+				// ۱. بررسی خاتمه زمان اشتراک در سرور مرکزی
+				if user.ExpireAt > 0 && now >= user.ExpireAt {
+					log.Printf("⏳ User [%s] subscription expired! Triggering Kill-Switch...", user.Username)
+					shouldDisable = true
 				}
 
-				// مقایسه با سقف مجاز (Kill-Switch)
-				if totalNetworkUsed >= user.VolumeLimit {
-					log.Printf("⚠️ User [%s] exceeded global limit! Executing Kill-Switch...", user.Username)
-					
-					// ارسال دستور انسداد به تمامی نودها در همان لحظه
+				// ۲. بررسی حجم تجمیعی نودها (اگر زمان تمام نشده بود حجم را چک کن)
+				if !shouldDisable && user.VolumeLimit > 0 {
+					var totalNetworkUsed int64 = 0
 					for _, node := range settings.Nodes {
 						token, err := api.GetToken(node.URL, node.Username, node.Password)
 						if err == nil {
-							api.DisableUser(node.URL, token, user.Username)
+							used, _ := api.GetUserUsage(node.URL, token, user.Username)
+							totalNetworkUsed += used
+						}
+					}
+
+					// مقایسه با حجم تجمیعی ثبت شده در دیتابیس Master
+					if totalNetworkUsed >= user.VolumeLimit {
+						log.Printf("⚠️ User [%s] exceeded Aggregated Volume Limit (%d >= %d)! Triggering Kill-Switch...", user.Username, totalNetworkUsed, user.VolumeLimit)
+						shouldDisable = true
+					}
+				}
+
+				// ۳. اجرای دستور قطع گروهی امن (POST /api/subscriptions/disable) در صورت نقض قوانین
+				if shouldDisable {
+					for _, node := range settings.Nodes {
+						token, err := api.GetToken(node.URL, node.Username, node.Password)
+						if err == nil {
+							// ارسال نام کاربری در آرایه جهت غیرفعال‌سازی طبق داکس جدید
+							api.DisableSubscriptions(node.URL, token, []string{user.Username})
 						}
 					}
 				}
@@ -168,25 +176,17 @@ func StartNodeMonitoring() {
 	}()
 }
 
-// سیستم جدید و هوشمند زمان‌بندی بکاپ
 func StartAutoBackup() {
-	lastBackupTime = time.Now() // مقداردهی اولیه در زمان استارت سرویس
-	
+	lastBackupTime = time.Now()
 	go func() {
 		for {
-			// چک کردن در بازه‌های ۱ دقیقه‌ای برای مصرف بهینه CPU
 			time.Sleep(1 * time.Minute)
-			
 			settings, _ := LoadSettings()
 			interval := settings.BackupInterval
-			if interval <= 0 {
-				interval = 1 
-			}
+			if interval <= 0 { interval = 1 }
 
-			// اگر اختلاف ساعت از آخرین بکاپ، بیشتر یا مساوی مقدار تنظیم شده بود
 			if time.Since(lastBackupTime).Hours() >= float64(interval) {
-				lastBackupTime = time.Now() // ریست کردن تایمر
-				
+				lastBackupTime = time.Now()
 				mu.RLock()
 				data, err := os.ReadFile(DBFile)
 				mu.RUnlock()
@@ -212,15 +212,12 @@ func TriggerInitialSync(settings models.SystemSettings) {
 	time.Sleep(2 * time.Second)
 	go sendToTelegram()
 	go sendToEmail()
-	
-	lastBackupTime = time.Now() // ریست کردن تایمر اتوماتیک به محض کلیک روی دکمه ذخیره
+	lastBackupTime = time.Now()
 }
 
 func sendToTelegram() {
 	settings, _ := LoadSettings()
-	if settings.TelegramToken == "" || settings.TelegramChatID == "" {
-		return
-	}
+	if settings.TelegramToken == "" || settings.TelegramChatID == "" { return }
 
 	zipPass := settings.TelegramPassword
 	if zipPass == "" { zipPass = "12345" }
@@ -253,27 +250,18 @@ func sendToTelegram() {
 	resp, err := client.Do(req)
 	if err != nil { return }
 	defer resp.Body.Close()
-
-	if resp.StatusCode == 200 {
-		log.Println("✅ Backup successfully sent to Telegram!")
-	}
 }
 
 func sendToEmail() {
 	settings, _ := LoadSettings()
-	if settings.SmtpEmail == "" || settings.SmtpPassword == "" || settings.SmtpReceiver == "" {
-		return
-	}
+	if settings.SmtpEmail == "" || settings.SmtpPassword == "" || settings.SmtpReceiver == "" { return }
 
 	zipPass := settings.SmtpZipPassword
 	if zipPass == "" { zipPass = "12345" }
 
 	zipPath := "/etc/merge_subs/backup_email.zip"
 	cmd := exec.Command("zip", "-j", "-P", zipPass, zipPath, DBFile)
-	if err := cmd.Run(); err != nil {
-		log.Println("❌ Error creating zip for email:", err)
-		return
-	}
+	if err := cmd.Run(); err != nil { return }
 	defer os.Remove(zipPath)
 
 	fileData, err := os.ReadFile(zipPath)
@@ -281,7 +269,6 @@ func sendToEmail() {
 	encodedFile := base64.StdEncoding.EncodeToString(fileData)
 
 	auth := smtp.PlainAuth("", settings.SmtpEmail, settings.SmtpPassword, "smtp.gmail.com")
-
 	boundary := "SubMergerBoundary"
 	to := settings.SmtpReceiver
 	from := settings.SmtpEmail
@@ -296,7 +283,7 @@ func sendToEmail() {
 
 	body.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	body.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-	body.WriteString("✅ فایل بکاپ خودکار دیتابیس پنل Sub-Merger به صورت فایل فشرده (رمزگذاری شده) پیوست گردید.\n\n")
+	body.WriteString("✅ فایل بکاپ خودکار دیتابیس پنل Sub-Merger پیوست گردید.\n\n")
 
 	body.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	body.WriteString("Content-Type: application/zip; name=\"backup.zip\"\r\n")
@@ -310,11 +297,5 @@ func sendToEmail() {
 	}
 
 	body.WriteString(fmt.Sprintf("\r\n--%s--\r\n", boundary))
-
-	err = smtp.SendMail("smtp.gmail.com:587", auth, from, []string{to}, body.Bytes())
-	if err != nil {
-		log.Println("❌ Error sending backup to Email:", err)
-	} else {
-		log.Println("✅ Backup successfully sent to Email!")
-	}
+	_ = smtp.SendMail("smtp.gmail.com:587", auth, from, []string{to}, body.Bytes())
 }

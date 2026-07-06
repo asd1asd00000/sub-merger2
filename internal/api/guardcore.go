@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -41,12 +43,12 @@ func GetToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("token not found")
 }
 
-// ساخت مستقیم کاربر روی نود GuardCore و دریافت لینک ساب
-func CreateSubscription(nodeURL, token, username string) (string, error) {
-	// ساخت بدنه درخواست بر اساس SubscriptionCreate استاندارد
+// ساخت مستقیم کاربر روی نود GuardCore با ارسال محدودیت حجم
+func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64) (string, error) {
 	payload := map[string]interface{}{
-		"username": username,
-		"status":   "active",
+		"username":   username,
+		"status":     "active",
+		"data_limit": volumeLimitBytes,
 	}
 	jsonData, _ := json.Marshal(payload)
 
@@ -60,23 +62,23 @@ func CreateSubscription(nodeURL, token, username string) (string, error) {
 	if err != nil { return "", err }
 	defer resp.Body.Close()
 
+	// سیستم لاگ‌گیری جادویی: اگر سرور نود ارور داد، دقیقاً دلیلش را در ترمینال چاپ می‌کند
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("❌ GuardCore API Error on [%s]: %s\n", nodeURL, string(bodyBytes))
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// استخراج اطلاعات گواهینامه برای ساخت لینک ساب /{tag}/{secret}
 	secret, _ := result["secret"].(string)
 	tag, _ := result["tag"].(string)
 
 	if secret != "" && tag != "" {
-		// خروجی لینک استاندارد اتصال کلاینت
-		return fmt.Sprintf("%s/%s/%s", nodeURL, tag, secret), nil
+		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
 	}
 
-	// حالت پیش‌فرض اگر پنل خودش لینک کامل را برگردانده باشد
 	if subURL, ok := result["subscription_url"].(string); ok {
 		return subURL, nil
 	}

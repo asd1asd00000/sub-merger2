@@ -89,7 +89,14 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 
 	nodeStatus := make(map[string]string)
 	for _, node := range settings.Nodes {
-		token, err := api.GetToken(node.URL, node.Username, node.Password)
+		var token string
+		var err error
+		if node.PanelType == "marzban" {
+			token, err = api.GetMarzbanToken(node.URL, node.Username, node.Password)
+		} else {
+			token, err = api.GetToken(node.URL, node.Username, node.Password)
+		}
+		
 		if err != nil {
 			nodeStatus[node.URL] = "🔴 Disconnected"
 		} else if token != "" {
@@ -147,15 +154,26 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		var automaticallyGeneratedURLs []string
 
-		// 🚀 تغییر اصلی: تخصیص نام کاربری اختصاصی با پسوند شماره نود برای شبیه‌سازی تک نودی
+		// 🤖 سوییچ هوشمند بین درایور پاسارگاد و گاردکور هنگام ساخت کاربر
 		for i, node := range settings.Nodes {
-			token, err := api.GetToken(node.URL, node.Username, node.Password)
-			if err == nil {
-				nodeUsername := fmt.Sprintf("%s_%d", username, i+1) // ایجاد ساختار ali_1 و ali_2
-				subLink, err := api.CreateSubscription(node.URL, token, nodeUsername, nodeVolumeLimit)
-				if err == nil && subLink != "" {
-					automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
+			var token, subLink string
+			var err error
+			nodeUsername := fmt.Sprintf("%s_%d", username, i+1)
+
+			if node.PanelType == "marzban" {
+				token, err = api.GetMarzbanToken(node.URL, node.Username, node.Password)
+				if err == nil {
+					subLink, err = api.CreateMarzbanSubscription(node.URL, token, nodeUsername, nodeVolumeLimit)
 				}
+			} else {
+				token, err = api.GetToken(node.URL, node.Username, node.Password)
+				if err == nil {
+					subLink, err = api.CreateSubscription(node.URL, token, nodeUsername, nodeVolumeLimit)
+				}
+			}
+
+			if err == nil && subLink != "" {
+				automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
 			}
 		}
 
@@ -165,7 +183,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		newID := generateUUID()
 		database[newID] = models.User{
-			Username:    username, // نام اصلی در مستر ثابت می‌ماند
+			Username:    username,
 			URLs:        automaticallyGeneratedURLs,
 			VolumeLimit: volumeLimitBytes,
 			ExpireAt:    expireTimestamp,
@@ -227,7 +245,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	volumeGB := float64(user.VolumeLimit) / (1024 * 1024 * 1024)
-	
 	var remainingDays int64 = 0
 	if user.ExpireAt > 0 {
 		remainingDays = (user.ExpireAt - time.Now().Unix()) / 86400
@@ -301,20 +318,19 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 
 		backupInterval, _ := strconv.Atoi(r.FormValue("backup_interval"))
-		if backupInterval < 1 {
-			backupInterval = 1
-		}
+		if backupInterval < 1 { backupInterval = 1 }
 
 		var nodes []models.Node
 		for i := 1; i <= 3; i++ {
+			nType := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_type_%d", i)))
+			if nType == "" { nType = "guardcore" }
 			nUrl := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_url_%d", i)))
+			nUrl = strings.TrimRight(nUrl, "/")
 			nUser := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_user_%d", i)))
 			nPass := strings.TrimSpace(r.FormValue(fmt.Sprintf("node_pass_%d", i)))
 			
-			nUrl = strings.TrimRight(nUrl, "/")
-			
 			if nUrl != "" {
-				nodes = append(nodes, models.Node{URL: nUrl, Username: nUser, Password: nPass})
+				nodes = append(nodes, models.Node{URL: nUrl, Username: nUser, Password: nPass, PanelType: nType})
 			}
 		}
 
@@ -336,7 +352,6 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		
 		db.SaveSettings(settings)
 		go db.TriggerInitialSync(settings)
-
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	}
 }

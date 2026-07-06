@@ -43,12 +43,15 @@ func GetToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("token not found")
 }
 
-// ساخت مستقیم کاربر روی نود GuardCore با ارسال محدودیت حجم
+// ساخت مستقیم کاربر روی نود GuardCore (حل مشکل List Payload)
 func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64) (string, error) {
-	payload := map[string]interface{}{
-		"username":   username,
-		"status":     "active",
-		"data_limit": volumeLimitBytes,
+	// GuardCore API به جای یک آبجکت، یک آرایه (لیست) از کاربران را می‌خواهد
+	payload := []map[string]interface{}{
+		{
+			"username":   username,
+			"status":     "active",
+			"data_limit": volumeLimitBytes,
+		},
 	}
 	jsonData, _ := json.Marshal(payload)
 
@@ -62,25 +65,34 @@ func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64)
 	if err != nil { return "", err }
 	defer resp.Body.Close()
 
-	// سیستم لاگ‌گیری جادویی: اگر سرور نود ارور داد، دقیقاً دلیلش را در ترمینال چاپ می‌کند
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		log.Printf("❌ GuardCore API Error on [%s]: %s\n", nodeURL, string(bodyBytes))
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
+	// پردازش هوشمند: استخراج لینک در صورتی که پاسخ سرور لیست یا آبجکت باشد
+	var rawResult interface{}
+	json.NewDecoder(resp.Body).Decode(&rawResult)
 
-	secret, _ := result["secret"].(string)
-	tag, _ := result["tag"].(string)
-
-	if secret != "" && tag != "" {
-		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
+	var firstResult map[string]interface{}
+	if listRes, ok := rawResult.([]interface{}); ok && len(listRes) > 0 {
+		firstResult, _ = listRes[0].(map[string]interface{})
+	} else if mapRes, ok := rawResult.(map[string]interface{}); ok {
+		firstResult = mapRes
 	}
 
-	if subURL, ok := result["subscription_url"].(string); ok {
-		return subURL, nil
+	if firstResult != nil {
+		secret, _ := firstResult["secret"].(string)
+		tag, _ := firstResult["tag"].(string)
+
+		if secret != "" && tag != "" {
+			return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
+		}
+
+		if subURL, ok := firstResult["subscription_url"].(string); ok {
+			return subURL, nil
+		}
 	}
 
 	return "", fmt.Errorf("could not extract subscription link properties")

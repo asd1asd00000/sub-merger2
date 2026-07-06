@@ -1,9 +1,10 @@
 package models
 
 type Node struct {
-	URL      string `json:"url"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	URL       string `json:"url"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	PanelType string `json:"panel_type"` // نوع پنل: guardcore یا marzban
 }
 
 type User struct {
@@ -11,8 +12,8 @@ type User struct {
 	URLs        []string `json:"urls"`
 	CreatedAt   int64    `json:"created_at"`
 	LastActive  int64    `json:"last_active"`
-	VolumeLimit int64    `json:"volume_limit"` // حجم تجمیعی ادمین به بایت
-	ExpireAt    int64    `json:"expire_at"`    // زمان خاتمه اشتراک (Timestamp)
+	VolumeLimit int64    `json:"volume_limit"`
+	ExpireAt    int64    `json:"expire_at"`
 }
 
 type SystemSettings struct {

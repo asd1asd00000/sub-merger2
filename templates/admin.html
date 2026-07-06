@@ -33,7 +33,7 @@
         .modal h3 { margin-top: 0; color: #3b82f6; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
         .modal h4 { color: #60a5fa; border-bottom: 1px dashed #374151; padding-bottom: 5px; margin-top: 20px; margin-bottom: 15px; }
         .modal label { display: block; margin: 10px 0 5px 0; font-weight: bold; font-size: 14px; color: #d1d5db; }
-        .modal input[type="text"], .modal input[type="password"], .modal input[type="number"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; }
+        .modal input[type="text"], .modal input[type="password"], .modal input[type="number"], .modal select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; font-family: inherit; }
         
         /* Custom Delete Modal */
         #deleteModal .modal-content { max-width: 380px; text-align: center; }
@@ -215,8 +215,8 @@
                 </div>
 
                 <div id="tab-nodes" class="tab-content">
-                    <h4>GuardCore API Nodes</h4>
-                    <p style="font-size: 12px; color: #9ca3af; margin-top: 0;">The system automatically checks API connectivity and pushes newly created users to the connected nodes.</p>
+                    <h4>Central Master Nodes</h4>
+                    <p style="font-size: 12px; color: #9ca3af; margin-top: 0;">Select your panel type and configure the API endpoints.</p>
                     
                     <label style="color: #60a5fa; margin-top: 15px;">
                         Node 1 (Primary Panel): 
@@ -224,7 +224,13 @@
                             {{ if gt (len .Settings.Nodes) 0 }}{{ index $.NodeStatus (index $.Settings.Nodes 0).URL }}{{ end }}
                         </span>
                     </label>
-                    <input type="text" name="node_url_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).URL }}{{ end }}" placeholder="https://core.erfjab.com">
+                    <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+                        <select name="node_type_1" style="width: 35%;">
+                            <option value="guardcore" {{ if gt (len .Settings.Nodes) 0 }}{{ if eq (index .Settings.Nodes 0).PanelType "guardcore" }}selected{{ end }}{{ end }}>GuardCore</option>
+                            <option value="marzban" {{ if gt (len .Settings.Nodes) 0 }}{{ if eq (index .Settings.Nodes 0).PanelType "marzban" }}selected{{ end }}{{ end }}>Pasargad / Marzban</option>
+                        </select>
+                        <input type="text" name="node_url_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).URL }}{{ end }}" placeholder="https://panel1.com" style="width: 65%; margin: 0;">
+                    </div>
                     <input type="text" name="node_user_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
                     <input type="password" name="node_pass_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
                     
@@ -234,7 +240,13 @@
                             {{ if gt (len .Settings.Nodes) 1 }}{{ index $.NodeStatus (index $.Settings.Nodes 1).URL }}{{ end }}
                         </span>
                     </label>
-                    <input type="text" name="node_url_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).URL }}{{ end }}" placeholder="https://node2.domain.com">
+                    <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+                        <select name="node_type_2" style="width: 35%;">
+                            <option value="guardcore" {{ if gt (len .Settings.Nodes) 1 }}{{ if eq (index .Settings.Nodes 1).PanelType "guardcore" }}selected{{ end }}{{ end }}>GuardCore</option>
+                            <option value="marzban" {{ if gt (len .Settings.Nodes) 1 }}{{ if eq (index .Settings.Nodes 1).PanelType "marzban" }}selected{{ end }}{{ end }}>Pasargad / Marzban</option>
+                        </select>
+                        <input type="text" name="node_url_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).URL }}{{ end }}" placeholder="https://panel2.com" style="width: 65%; margin: 0;">
+                    </div>
                     <input type="text" name="node_user_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
                     <input type="password" name="node_pass_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
 
@@ -244,7 +256,13 @@
                             {{ if gt (len .Settings.Nodes) 2 }}{{ index $.NodeStatus (index $.Settings.Nodes 2).URL }}{{ end }}
                         </span>
                     </label>
-                    <input type="text" name="node_url_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).URL }}{{ end }}" placeholder="https://node3.domain.com">
+                    <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+                        <select name="node_type_3" style="width: 35%;">
+                            <option value="guardcore" {{ if gt (len .Settings.Nodes) 2 }}{{ if eq (index .Settings.Nodes 2).PanelType "guardcore" }}selected{{ end }}{{ end }}>GuardCore</option>
+                            <option value="marzban" {{ if gt (len .Settings.Nodes) 2 }}{{ if eq (index .Settings.Nodes 2).PanelType "marzban" }}selected{{ end }}{{ end }}>Pasargad / Marzban</option>
+                        </select>
+                        <input type="text" name="node_url_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).URL }}{{ end }}" placeholder="https://panel3.com" style="width: 65%; margin: 0;">
+                    </div>
                     <input type="text" name="node_user_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
                     <input type="password" name="node_pass_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
                 </div>
@@ -379,34 +397,3 @@
 
                 let startPage = Math.max(1, currentPage - 2);
                 let endPage = Math.min(totalPages, currentPage + 2);
-
-                for (let i = startPage; i <= endPage; i++) {
-                    const btn = document.createElement('button');
-                    btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
-                    btn.innerText = i;
-                    btn.onclick = () => { currentPage = i; renderTable(); };
-                    pagination.appendChild(btn);
-                }
-
-                const nextBtn = document.createElement('button');
-                nextBtn.className = 'page-btn'; nextBtn.innerText = 'Next';
-                nextBtn.disabled = currentPage === totalPages;
-                nextBtn.onclick = () => { if (currentPage < totalPages) { currentPage++; renderTable(); } };
-                pagination.appendChild(nextBtn);
-            }
-
-            rowsPerPageSelect.addEventListener('change', function() {
-                rowsPerPage = parseInt(this.value); currentPage = 1; renderTable();
-            });
-
-            searchInput.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase().trim();
-                filteredRows = allRows.filter(row => row.getAttribute('data-username').toLowerCase().includes(searchTerm));
-                currentPage = 1; renderTable();
-            });
-
-            renderTable();
-        });
-    </script>
-</body>
-</html>

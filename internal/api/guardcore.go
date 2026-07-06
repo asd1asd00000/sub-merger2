@@ -43,21 +43,18 @@ func GetToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("token not found")
 }
 
-// 🤖 تابع هوشمند برای استخراج اتوماتیک لیست سرویس‌ها از نود
+// 🤖 استخراج اتوماتیک لیست آیدی سرویس‌ها از نود
 func GetNodeServiceIDs(nodeURL, token string) []int {
 	req, _ := http.NewRequest("GET", nodeURL+"/api/services", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
-	
-	// اگر نتوانست سرویس‌ها را بخواند، حداقل آیدی شماره 1 (دیفالت) را برمی‌گرداند تا ساخت متوقف نشود
 	if err != nil { return []int{1} } 
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	
-	// جستجو برای یافتن آیدی سرویس‌ها در پاسخ سرور
 	var listResult []map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &listResult); err == nil {
 		var ids []int
@@ -66,37 +63,22 @@ func GetNodeServiceIDs(nodeURL, token string) []int {
 		}
 		if len(ids) > 0 { return ids }
 	}
-
-	var mapResult map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &mapResult); err == nil {
-		for _, val := range mapResult {
-			if list, ok := val.([]interface{}); ok {
-				var ids []int
-				for _, item := range list {
-					if sMap, ok := item.(map[string]interface{}); ok {
-						if id, ok := sMap["id"].(float64); ok { ids = append(ids, int(id)) }
-					}
-				}
-				if len(ids) > 0 { return ids }
-			}
-		}
-	}
-	
-	return []int{1} // مقدار زاپاس
+	return []int{1} // مقدار زاپاس اگر هیچ سرویسی پیدا نشد
 }
 
-// ساخت مستقیم کاربر روی نود GuardCore
+// ساخت مستقیم کاربر روی نود GuardCore (ترکیب فیلدهای صحیح + ساختار لیستی)
 func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64) (string, error) {
-	// اول لیست تمام سرویس‌های تیک‌خورده نود را می‌گیریم
 	serviceIDs := GetNodeServiceIDs(nodeURL, token)
 
-	// بدنه درخواست دقیقاً طبق نیاز GuardCore مونتاژ می‌شود
-	payload := map[string]interface{}{
-		"username":     username,
-		"status":       "active",
-		"limit_usage":  volumeLimitBytes, // حجم
-		"limit_expire": 0,                // زمان صفر = نامحدود (مدیریت قطع توسط خود Sub-Merger انجام می‌شود)
-		"service_ids":  serviceIDs,       // اختصاص تمام سرویس‌ها
+	// 🔥 توجه: اینجا از براکت [] استفاده شده تا Payload یک لیست معتبر (Array) باشد
+	payload := []map[string]interface{}{
+		{
+			"username":     username,
+			"limit_usage":  volumeLimitBytes,
+			"limit_expire": 0,          // 0 یعنی بدون تاریخ انقضا
+			"service_ids":  serviceIDs, // اختصاص سرویس‌ها
+			"enabled":      true,       // طبق مستندات GET شما
+		},
 	}
 	jsonData, _ := json.Marshal(payload)
 
@@ -116,19 +98,27 @@ func CreateSubscription(nodeURL, token, username string, volumeLimitBytes int64)
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
+	var rawResult interface{}
+	json.NewDecoder(resp.Body).Decode(&rawResult)
 
-	secret, _ := result["secret"].(string)
-	tag, _ := result["tag"].(string)
-
-	// ساخت لینک اتوماتیک
-	if secret != "" && tag != "" {
-		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
+	var firstResult map[string]interface{}
+	if listRes, ok := rawResult.([]interface{}); ok && len(listRes) > 0 {
+		firstResult, _ = listRes[0].(map[string]interface{})
+	} else if mapRes, ok := rawResult.(map[string]interface{}); ok {
+		firstResult = mapRes
 	}
 
-	if subURL, ok := result["subscription_url"].(string); ok {
-		return subURL, nil
+	if firstResult != nil {
+		// استفاده از فیلد مستقیم link طبق مستنداتی که فرستادید
+		if link, ok := firstResult["link"].(string); ok && link != "" {
+			return link, nil
+		}
+		// روش جایگزین
+		secret, _ := firstResult["secret"].(string)
+		tag, _ := firstResult["tag"].(string)
+		if secret != "" && tag != "" {
+			return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
+		}
 	}
 
 	return "", fmt.Errorf("could not extract subscription link properties")
@@ -165,7 +155,8 @@ func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
 
 // مسدود کردن کاربر در نود
 func DisableUser(nodeURL, token, targetUser string) error {
-	payload := map[string]string{"status": "disabled"}
+	// طبق مستندات، پنل شما از enabled: false برای قطعی استفاده می‌کند
+	payload := map[string]interface{}{"enabled": false}
 	jsonData, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/subscriptions/%s", nodeURL, targetUser), bytes.NewBuffer(jsonData))
@@ -177,5 +168,6 @@ func DisableUser(nodeURL, token, targetUser string) error {
 	if err != nil { return err }
 	defer resp.Body.Close()
 
+	log.Printf("🛡️ Sent Disable (enabled:false) for user [%s] to node [%s]", targetUser, nodeURL)
 	return nil
 }

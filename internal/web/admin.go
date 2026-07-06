@@ -104,7 +104,12 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tmpl, _ := template.ParseFiles("templates/admin.html")
+	// 🛠️ افزودن هوشمند عیب‌یابی قالب برای چاپ ارور مستقیم روی مرورگر
+	tmpl, err := template.ParseFiles("templates/admin.html")
+	if err != nil {
+		http.Error(w, "❌ Template Parsing Error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	
 	data := struct {
 		Users      []UserItem
@@ -117,7 +122,11 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		Settings:   settings,
 		NodeStatus: nodeStatus,
 	}
-	tmpl.Execute(w, data)
+	
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		http.Error(w, "❌ Template Execution Error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func handleAddUser(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +163,6 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		var automaticallyGeneratedURLs []string
 
-		// 🤖 سوییچ هوشمند بین درایور پاسارگاد و گاردکور هنگام ساخت کاربر
 		for i, node := range settings.Nodes {
 			var token, subLink string
 			var err error

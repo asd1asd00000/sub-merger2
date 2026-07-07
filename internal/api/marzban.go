@@ -40,82 +40,65 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-// 🤖 موتور هوشمند و منطبق با ساختار Rust
-func GetMarzbanInbounds(nodeURL, token string) map[string][]string {
-	baseURL := strings.TrimRight(nodeURL, "/")
-	req, _ := http.NewRequest("GET", baseURL+"/api/inbounds", nil)
+// 🤖 استخراج اتوماتیک آیدی گروه‌ها (اختصاصی پاسارگاد)
+func GetPasargadGroupIDs(baseURL, token string) []int {
+	req, _ := http.NewRequest("GET", baseURL+"/api/groups", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	req.Header.Add("Accept", "application/json")
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
+	
+	// اگر مسیر /api/groups بسته بود یا تغییر کرده بود، یک فال‌بک طلایی می‌زنیم (استفاده از آیدی‌های ۱ تا ۵)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return map[string][]string{}
+		log.Printf("⚠️ Could not fetch groups. Using fallback IDs [1,2,3,4,5].")
+		return []int{1, 2, 3, 4, 5}
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	// ۱. استخراج به سبک پاسارگاد (لیست ساده) و تبدیل اجباری آن به قالب استاندارد Rust
-	var flatArray []string
-	if err := json.Unmarshal(bodyBytes, &flatArray); err == nil && len(flatArray) > 0 {
-		log.Printf("🔍 Auto-Extracted & Formatted Pasargad Inbounds: %v", flatArray)
-		// تخصیص لیست گروه‌ها به تمام پروتکل‌ها برای جلب رضایت سرور
-		return map[string][]string{
-			"vless":       flatArray,
-			"vmess":       flatArray,
-			"trojan":      flatArray,
-			"shadowsocks": flatArray,
-		}
-	}
-
-	// ۲. استخراج به سبک مرزبان کلاسیک
-	var rawMap map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &rawMap); err == nil {
-		cleanInbounds := make(map[string][]string)
-		for protocol, val := range rawMap {
-			if list, ok := val.([]interface{}); ok {
-				var tags []string
-				for _, item := range list {
-					if inboundObj, isMap := item.(map[string]interface{}); isMap {
-						if tag, hasTag := inboundObj["tag"].(string); hasTag && tag != "" {
-							tags = append(tags, tag)
-						}
-					}
-				}
-				if len(tags) > 0 {
-					cleanInbounds[protocol] = tags
-				}
+	var groups []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&groups); err == nil {
+		var ids []int
+		for _, g := range groups {
+			if id, ok := g["id"].(float64); ok {
+				ids = append(ids, int(id))
 			}
 		}
-		log.Printf("🔍 Auto-Extracted Marzban Map Inbounds: %v", cleanInbounds)
-		return cleanInbounds
+		if len(ids) > 0 {
+			log.Printf("🔍 Auto-Extracted Pasargad Group IDs: %v", ids)
+			return ids
+		}
 	}
-
-	log.Printf("⚠️ Could not decode inbounds. Data: %s", string(bodyBytes))
-	return map[string][]string{}
+	return []int{1, 2, 3, 4, 5}
 }
 
-// ساخت کاربر با تزریق هوشمند تمام گروه‌ها/سرویس‌ها
+// ساخت کاربر با زبانِ اختصاصی پاسارگاد (استفاده از group_ids و proxy_settings)
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	
-	// اینجا گروه‌ها با فرمت صحیح (دیکشنری) دریافت می‌شوند
-	inbounds := GetMarzbanInbounds(baseURL, token)
+	// استخراج شماره گروه‌ها
+	groupIDs := GetPasargadGroupIDs(baseURL, token)
 
 	payload := map[string]interface{}{
 		"username":                  username,
 		"data_limit":                nodeVolumeLimit,
-		"expire":                    expireTimestamp,
 		"data_limit_reset_strategy": "no_reset",
-		"proxies": map[string]interface{}{
+		"hwid_limit":                0,
+		"status":                    "active",
+		"group_ids":                 groupIDs, // 🎯 تزریق دقیق گروه‌ها
+		"proxy_settings": map[string]interface{}{ // 🎯 فیلد اختصاصی پاسارگاد
 			"vmess":       map[string]interface{}{},
 			"vless":       map[string]interface{}{},
 			"trojan":      map[string]interface{}{},
 			"shadowsocks": map[string]interface{}{},
 		},
-		"inbounds":                  inbounds, // تزریق موفق گروه‌ها
-		"status":                    "active",
+	}
+
+	// مدیریت هوشمند زمان انقضا دقیقاً طبق دیتای دریافتی (null برای نامحدود)
+	if expireTimestamp > 0 {
+		payload["expire"] = expireTimestamp
+	} else {
+		payload["expire"] = nil
 	}
 
 	jsonData, _ := json.Marshal(payload)

@@ -13,12 +13,13 @@ import (
 )
 
 func GetMarzbanToken(nodeURL, username, password string) (string, error) {
+	baseURL := strings.TrimRight(nodeURL, "/")
 	data := url.Values{}
 	data.Set("grant_type", "password")
 	data.Set("username", username)
 	data.Set("password", password)
 
-	req, err := http.NewRequest("POST", nodeURL+"/api/admin/token", strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", baseURL+"/api/admin/token", strings.NewReader(data.Encode()))
 	if err != nil { return "", err }
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
@@ -39,49 +40,65 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-// 🤖 موتور تصفیه هوشمند: تبدیل آبجکت‌های اینباند به لیست رشته‌ای از Tagها طبق استاندارد مرزبان
+// 🤖 موتور تصفیه هوشمند و ضدگلوله برای استخراج تگ‌های پاسارگاد
 func GetMarzbanInbounds(nodeURL, token string) map[string][]string {
-	req, _ := http.NewRequest("GET", nodeURL+"/api/inbounds", nil)
+	baseURL := strings.TrimRight(nodeURL, "/")
+	req, _ := http.NewRequest("GET", baseURL+"/api/inbounds", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
+	req.Header.Add("Accept", "application/json")
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil {
+		log.Printf("⚠️ Pasargad Inbounds Error (Network): %v", err)
 		return map[string][]string{}
 	}
 	defer resp.Body.Close()
 
-	// دریافت ساختار خام آبجکت‌های درون اینباندها
-	var rawInbounds map[string][]map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&rawInbounds); err != nil {
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("⚠️ Pasargad Inbounds Bad Status: %d | Response: %s", resp.StatusCode, string(bodyBytes))
 		return map[string][]string{}
 	}
 
-	// استخراج بایت به بایت تگ‌ها و تبدیل به آرایه‌ای از رشته‌ها (map[string][]string)
+	// استفاده از interface{} برای دور زدن حساسیت‌های Go در برابر ساختارهای ناشناخته
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &rawMap); err != nil {
+		log.Printf("⚠️ Pasargad JSON Decode Error: %v | Data: %s", err, string(bodyBytes))
+		return map[string][]string{}
+	}
+
 	cleanInbounds := make(map[string][]string)
-	for protocol, list := range rawInbounds {
-		var tags []string
-		for _, inbound := range list {
-			if tag, ok := inbound["tag"].(string); ok && tag != "" {
-				tags = append(tags, tag)
+	for protocol, val := range rawMap {
+		if list, ok := val.([]interface{}); ok {
+			var tags []string
+			for _, item := range list {
+				if inboundObj, isMap := item.(map[string]interface{}); isMap {
+					if tag, hasTag := inboundObj["tag"].(string); hasTag && tag != "" {
+						tags = append(tags, tag)
+					}
+				}
+			}
+			if len(tags) > 0 {
+				cleanInbounds[protocol] = tags
 			}
 		}
-		if len(tags) > 0 {
-			cleanInbounds[protocol] = tags
-		}
 	}
+	
+	// چاپ موفقیت‌آمیز بودن استخراج در ترمینال
+	log.Printf("🔍 Auto-Extracted Pasargad Inbounds: %v", cleanInbounds)
 	return cleanInbounds
 }
 
-// ساخت کاربر با اعمال تاریخ انقضا و تیک زدن تمام سرویس‌ها و گروه‌ها به صورت خودکار
+// ساخت کاربر با اعمال تاریخ انقضا و تیک زدن هوشمند تمام سرویس‌ها
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
-	// دریافت لیست تگ‌های تصفیه شده اختصاصی نود
-	inbounds := GetMarzbanInbounds(nodeURL, token)
+	baseURL := strings.TrimRight(nodeURL, "/")
+	inbounds := GetMarzbanInbounds(baseURL, token)
 
 	payload := map[string]interface{}{
 		"username":                  username,
 		"data_limit":                nodeVolumeLimit,
-		"expire":                    expireTimestamp, // اعمال دقیق زمان انقضا روی نود
+		"expire":                    expireTimestamp,
 		"data_limit_reset_strategy": "no_reset",
 		"proxies": map[string]interface{}{
 			"vmess":       map[string]interface{}{},
@@ -89,12 +106,12 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 			"trojan":      map[string]interface{}{},
 			"shadowsocks": map[string]interface{}{},
 		},
-		"inbounds":                  inbounds, // ارسال نقشه تگ‌های تصفیه شده جهت فعال‌سازی گروه‌ها
+		"inbounds":                  inbounds, // ارسال لیست تصفیه شده (عملکرد معادل Select All در فرانت‌اند)
 		"status":                    "active",
 	}
 	jsonData, _ := json.Marshal(payload)
 
-	req, err := http.NewRequest("POST", nodeURL+"/api/user", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", baseURL+"/api/user", bytes.NewBuffer(jsonData))
 	if err != nil { return "", err }
 	req.Header.Add("Authorization", "Bearer "+token)
 	req.Header.Add("Content-Type", "application/json")
@@ -106,7 +123,7 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("❌ Pasargad API Error on [%s]: %s\n", nodeURL, string(bodyBytes))
+		log.Printf("❌ Pasargad API Error on [%s]: %s\n", baseURL, string(bodyBytes))
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
@@ -115,7 +132,7 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 
 	if subURL, ok := result["subscription_url"].(string); ok && subURL != "" {
 		if strings.HasPrefix(subURL, "/") {
-			return strings.TrimRight(nodeURL, "/") + subURL, nil
+			return baseURL + subURL, nil
 		}
 		return subURL, nil
 	}
@@ -129,7 +146,8 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 }
 
 func GetMarzbanUserUsage(nodeURL, token, targetUser string) (int64, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", nodeURL, targetUser), nil)
+	baseURL := strings.TrimRight(nodeURL, "/")
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", baseURL, targetUser), nil)
 	if err != nil { return 0, err }
 	req.Header.Add("Authorization", "Bearer "+token)
 
@@ -148,9 +166,10 @@ func GetMarzbanUserUsage(nodeURL, token, targetUser string) (int64, error) {
 }
 
 func DisableMarzbanUsers(nodeURL, token string, usernames []string) error {
+	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 	for _, u := range usernames {
-		reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", nodeURL, u), nil)
+		reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", baseURL, u), nil)
 		reqGet.Header.Add("Authorization", "Bearer "+token)
 		respGet, err := client.Do(reqGet)
 		if err != nil { continue }
@@ -164,13 +183,13 @@ func DisableMarzbanUsers(nodeURL, token string, usernames []string) error {
 		user["status"] = "disabled"
 		jsonData, _ := json.Marshal(user)
 		
-		reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/user/%s", nodeURL, u), bytes.NewBuffer(jsonData))
+		reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/user/%s", baseURL, u), bytes.NewBuffer(jsonData))
 		reqPut.Header.Add("Authorization", "Bearer "+token)
 		reqPut.Header.Add("Content-Type", "application/json")
 		
 		respPut, err := client.Do(reqPut)
 		if err == nil { respPut.Body.Close() }
 	}
-	log.Printf("🛡️ Sent Disable (Pasargad/Marzban) for users %v to node [%s]", usernames, nodeURL)
+	log.Printf("🛡️ Sent Disable (Pasargad/Marzban) for users %v to node [%s]", usernames, baseURL)
 	return nil
 }

@@ -104,7 +104,6 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 🛠️ افزودن هوشمند عیب‌یابی قالب برای چاپ ارور مستقیم روی مرورگر
 	tmpl, err := template.ParseFiles("templates/admin.html")
 	if err != nil {
 		http.Error(w, "❌ Template Parsing Error: "+err.Error(), http.StatusInternalServerError)
@@ -163,6 +162,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		var automaticallyGeneratedURLs []string
 
+		// 🎯 ارتقا: پاس دادن پارامتر expireTimestamp به هر دو پنل
 		for i, node := range settings.Nodes {
 			var token, subLink string
 			var err error
@@ -171,12 +171,12 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 			if node.PanelType == "marzban" {
 				token, err = api.GetMarzbanToken(node.URL, node.Username, node.Password)
 				if err == nil {
-					subLink, err = api.CreateMarzbanSubscription(node.URL, token, nodeUsername, nodeVolumeLimit)
+					subLink, err = api.CreateMarzbanSubscription(node.URL, token, nodeUsername, nodeVolumeLimit, expireTimestamp)
 				}
 			} else {
 				token, err = api.GetToken(node.URL, node.Username, node.Password)
 				if err == nil {
-					subLink, err = api.CreateSubscription(node.URL, token, nodeUsername, nodeVolumeLimit)
+					subLink, err = api.CreateSubscription(node.URL, token, nodeUsername, nodeVolumeLimit, expireTimestamp)
 				}
 			}
 

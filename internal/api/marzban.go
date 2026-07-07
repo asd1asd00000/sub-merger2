@@ -39,31 +39,49 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-// 🤖 موتور استخراج اتوماتیک کانکشن‌ها/گروه‌های پاسارگاد
-func GetMarzbanInbounds(nodeURL, token string) map[string]interface{} {
+// 🤖 موتور تصفیه هوشمند: تبدیل آبجکت‌های اینباند به لیست رشته‌ای از Tagها طبق استاندارد مرزبان
+func GetMarzbanInbounds(nodeURL, token string) map[string][]string {
 	req, _ := http.NewRequest("GET", nodeURL+"/api/inbounds", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return map[string]interface{}{}
+		return map[string][]string{}
 	}
 	defer resp.Body.Close()
 
-	var inbounds map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&inbounds)
-	return inbounds
+	// دریافت ساختار خام آبجکت‌های درون اینباندها
+	var rawInbounds map[string][]map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&rawInbounds); err != nil {
+		return map[string][]string{}
+	}
+
+	// استخراج بایت به بایت تگ‌ها و تبدیل به آرایه‌ای از رشته‌ها (map[string][]string)
+	cleanInbounds := make(map[string][]string)
+	for protocol, list := range rawInbounds {
+		var tags []string
+		for _, inbound := range list {
+			if tag, ok := inbound["tag"].(string); ok && tag != "" {
+				tags = append(tags, tag)
+			}
+		}
+		if len(tags) > 0 {
+			cleanInbounds[protocol] = tags
+		}
+	}
+	return cleanInbounds
 }
 
-// ساخت کاربر با اعمال تاریخ انقضا و تیک زدن تمام سرویس‌ها
+// ساخت کاربر با اعمال تاریخ انقضا و تیک زدن تمام سرویس‌ها و گروه‌ها به صورت خودکار
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
+	// دریافت لیست تگ‌های تصفیه شده اختصاصی نود
 	inbounds := GetMarzbanInbounds(nodeURL, token)
 
 	payload := map[string]interface{}{
 		"username":                  username,
 		"data_limit":                nodeVolumeLimit,
-		"expire":                    expireTimestamp, // اعمال تاریخ انقضا
+		"expire":                    expireTimestamp, // اعمال دقیق زمان انقضا روی نود
 		"data_limit_reset_strategy": "no_reset",
 		"proxies": map[string]interface{}{
 			"vmess":       map[string]interface{}{},
@@ -71,7 +89,7 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 			"trojan":      map[string]interface{}{},
 			"shadowsocks": map[string]interface{}{},
 		},
-		"inbounds":                  inbounds, // اعمال تمام سرویس‌ها/گروه‌های مجاز
+		"inbounds":                  inbounds, // ارسال نقشه تگ‌های تصفیه شده جهت فعال‌سازی گروه‌ها
 		"status":                    "active",
 	}
 	jsonData, _ := json.Marshal(payload)

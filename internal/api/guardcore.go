@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// دریافت توکن احراز هویت از GuardCore
 func GetToken(nodeURL, username, password string) (string, error) {
 	data := url.Values{}
 	data.Set("grant_type", "password")
@@ -43,7 +42,6 @@ func GetToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("token not found")
 }
 
-// استخراج اتوماتیک لیست آیدی سرویس‌ها از نود
 func GetNodeServiceIDs(nodeURL, token string) []int {
 	req, _ := http.NewRequest("GET", nodeURL+"/api/services", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -66,15 +64,15 @@ func GetNodeServiceIDs(nodeURL, token string) []int {
 	return []int{1}
 }
 
-// ساخت مستقیم کاربر روی نود GuardCore
-func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64) (string, error) {
+// 🎯 ارتقا: دریافت expireTimestamp و ارسال به نود
+func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	serviceIDs := GetNodeServiceIDs(nodeURL, token)
 
 	payload := []map[string]interface{}{
 		{
 			"username":     username,
 			"limit_usage":  nodeVolumeLimit, 
-			"limit_expire": 0,               
+			"limit_expire": expireTimestamp, // قبلا 0 بود، الان زمان واقعی پاس داده میشه
 			"service_ids":  serviceIDs,
 			"enabled":      true,
 		},
@@ -121,7 +119,6 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64) 
 	return "", fmt.Errorf("could not extract subscription link properties")
 }
 
-// 🎯 خواندن دقیق مصرف از مسیر صحیح طبق داکس GuardCore
 func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s", nodeURL, targetUser), nil)
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -134,7 +131,6 @@ func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// طبق داکس شما، فیلد current_usage مصرف فعلی را برمی‌گرداند
 	if current, ok := result["current_usage"].(float64); ok {
 		return int64(current), nil
 	} else if total, ok := result["total_usage"].(float64); ok {
@@ -144,7 +140,6 @@ func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
 	return 0, fmt.Errorf("could not find usage data")
 }
 
-// 🛡️ قطع گروهی اکانت‌ها با مستندات POST
 func DisableSubscriptions(nodeURL, token string, usernames []string) error {
 	payload := map[string][]string{
 		"usernames": usernames,

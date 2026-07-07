@@ -40,8 +40,8 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-// 🤖 موتور هوشمند استخراج (پشتیبانی از آرایه پاسارگاد + دیکشنری مرزبان)
-func GetMarzbanInbounds(nodeURL, token string) interface{} {
+// 🤖 موتور هوشمند و منطبق با ساختار Rust
+func GetMarzbanInbounds(nodeURL, token string) map[string][]string {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	req, _ := http.NewRequest("GET", baseURL+"/api/inbounds", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -50,20 +50,26 @@ func GetMarzbanInbounds(nodeURL, token string) interface{} {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return nil
+		return map[string][]string{}
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
-	// ۱. تلاش برای خواندن به صورت آرایه مسطح (معماری پاسارگاد)
+	// ۱. استخراج به سبک پاسارگاد (لیست ساده) و تبدیل اجباری آن به قالب استاندارد Rust
 	var flatArray []string
-	if err := json.Unmarshal(bodyBytes, &flatArray); err == nil {
-		log.Printf("🔍 Auto-Extracted Pasargad Flat Inbounds: %v", flatArray)
-		return flatArray
+	if err := json.Unmarshal(bodyBytes, &flatArray); err == nil && len(flatArray) > 0 {
+		log.Printf("🔍 Auto-Extracted & Formatted Pasargad Inbounds: %v", flatArray)
+		// تخصیص لیست گروه‌ها به تمام پروتکل‌ها برای جلب رضایت سرور
+		return map[string][]string{
+			"vless":       flatArray,
+			"vmess":       flatArray,
+			"trojan":      flatArray,
+			"shadowsocks": flatArray,
+		}
 	}
 
-	// ۲. تلاش برای خواندن به صورت دیکشنری (معماری مرزبان استاندارد)
+	// ۲. استخراج به سبک مرزبان کلاسیک
 	var rawMap map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &rawMap); err == nil {
 		cleanInbounds := make(map[string][]string)
@@ -87,12 +93,14 @@ func GetMarzbanInbounds(nodeURL, token string) interface{} {
 	}
 
 	log.Printf("⚠️ Could not decode inbounds. Data: %s", string(bodyBytes))
-	return nil
+	return map[string][]string{}
 }
 
 // ساخت کاربر با تزریق هوشمند تمام گروه‌ها/سرویس‌ها
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
+	
+	// اینجا گروه‌ها با فرمت صحیح (دیکشنری) دریافت می‌شوند
 	inbounds := GetMarzbanInbounds(baseURL, token)
 
 	payload := map[string]interface{}{
@@ -106,12 +114,8 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 			"trojan":      map[string]interface{}{},
 			"shadowsocks": map[string]interface{}{},
 		},
-		"status": "active",
-	}
-
-	// اگر اینباندها با موفقیت استخراج شدند، آن‌ها را به بدنه اضافه کن
-	if inbounds != nil {
-		payload["inbounds"] = inbounds
+		"inbounds":                  inbounds, // تزریق موفق گروه‌ها
+		"status":                    "active",
 	}
 
 	jsonData, _ := json.Marshal(payload)

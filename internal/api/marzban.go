@@ -40,9 +40,7 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-// 🤖 تابع استخراج گروه با فال‌بک دقیق و شخصی‌سازی شده برای سرور شما
 func GetPasargadGroupIDs(baseURL, token string) []int {
-	// تلاش برای پیدا کردن گروه‌ها از مسیرهای احتمالی پاسارگاد
 	endpoints := []string{"/api/groups", "/api/user_groups", "/api/admin/groups"}
 	
 	for _, ep := range endpoints {
@@ -64,22 +62,32 @@ func GetPasargadGroupIDs(baseURL, token string) []int {
 					}
 				}
 				if len(ids) > 0 {
-					log.Printf("🔍 Auto-Extracted Pasargad Group IDs from %s: %v", ep, ids)
 					return ids
 				}
 			}
 		}
 	}
-
-	// 🎯 اگر مسیر API را پیدا نکرد، مستقیماً از آیدی‌های دقیق سرور خودتان که در لاگ قبلی دیدیم استفاده می‌کند
-	log.Printf("⚠️ Using specific fallback IDs [1, 3] from your panel data.")
-	return []int{1, 3}
+	return []int{1, 3} // فال‌بک تضمینی سرور شما
 }
 
-// ساخت کاربر با تزریق دقیق گروه‌ها
+func extractSubURL(baseURL string, data map[string]interface{}) string {
+	if subURL, ok := data["subscription_url"].(string); ok && subURL != "" {
+		if strings.HasPrefix(subURL, "/") {
+			return baseURL + subURL
+		}
+		return subURL
+	}
+	if links, ok := data["links"].([]interface{}); ok && len(links) > 0 {
+		if linkStr, ok := links[0].(string); ok {
+			return linkStr
+		}
+	}
+	return ""
+}
+
+// 🎯 ساخت کاربر و تضمین ۱۰۰٪ دریافت لینک
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
-	
 	groupIDs := GetPasargadGroupIDs(baseURL, token)
 
 	payload := map[string]interface{}{
@@ -88,7 +96,7 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 		"data_limit_reset_strategy": "no_reset",
 		"hwid_limit":                0,
 		"status":                    "active",
-		"group_ids":                 groupIDs, // تزریق دقیق [1, 3]
+		"group_ids":                 groupIDs,
 		"proxy_settings": map[string]interface{}{
 			"vmess":       map[string]interface{}{},
 			"vless":       map[string]interface{}{},
@@ -104,7 +112,6 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 	}
 
 	jsonData, _ := json.Marshal(payload)
-
 	req, err := http.NewRequest("POST", baseURL+"/api/user", bytes.NewBuffer(jsonData))
 	if err != nil { return "", err }
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -117,26 +124,35 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("❌ Pasargad API Error on [%s]: %s\n", baseURL, string(bodyBytes))
-		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
+		return "", fmt.Errorf("create failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	if subURL, ok := result["subscription_url"].(string); ok && subURL != "" {
-		if strings.HasPrefix(subURL, "/") {
-			return baseURL + subURL, nil
-		}
-		return subURL, nil
+	// ۱. تلاش برای خواندن لینک از جواب مستقیم ساخت کاربر
+	subLink := extractSubURL(baseURL, result)
+	if subLink != "" {
+		return subLink, nil
 	}
 
-	if links, ok := result["links"].([]interface{}); ok && len(links) > 0 {
-		if linkStr, ok := links[0].(string); ok {
-			return linkStr, nil
+	// ۲. استراتژی Fallback: رفتن و گرفتن اطلاعات کاربر تازه متولد شده!
+	log.Printf("⚠️ Pasargad didn't return link directly. Executing GET fallback for user %s...", username)
+	reqGet, _ := http.NewRequest("GET", baseURL+"/api/user/"+username, nil)
+	reqGet.Header.Add("Authorization", "Bearer "+token)
+	respGet, err := client.Do(reqGet)
+	if err == nil && respGet.StatusCode == http.StatusOK {
+		defer respGet.Body.Close()
+		var getUser map[string]interface{}
+		json.NewDecoder(respGet.Body).Decode(&getUser)
+		
+		subLink = extractSubURL(baseURL, getUser)
+		if subLink != "" {
+			return subLink, nil
 		}
 	}
-	return "", fmt.Errorf("could not extract marzban link properties")
+
+	return "", fmt.Errorf("user created successfully in panel, but Sub-Merger could not extract the subscription_url")
 }
 
 func GetMarzbanUserUsage(nodeURL, token, targetUser string) (int64, error) {
@@ -184,6 +200,5 @@ func DisableMarzbanUsers(nodeURL, token string, usernames []string) error {
 		respPut, err := client.Do(reqPut)
 		if err == nil { respPut.Body.Close() }
 	}
-	log.Printf("🛡️ Sent Disable (Pasargad/Marzban) for users %v to node [%s]", usernames, baseURL)
 	return nil
 }

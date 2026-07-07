@@ -40,43 +40,46 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-// 🤖 استخراج اتوماتیک آیدی گروه‌ها (اختصاصی پاسارگاد)
+// 🤖 تابع استخراج گروه با فال‌بک دقیق و شخصی‌سازی شده برای سرور شما
 func GetPasargadGroupIDs(baseURL, token string) []int {
-	req, _ := http.NewRequest("GET", baseURL+"/api/groups", nil)
-	req.Header.Add("Authorization", "Bearer "+token)
-	req.Header.Add("Accept", "application/json")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	// تلاش برای پیدا کردن گروه‌ها از مسیرهای احتمالی پاسارگاد
+	endpoints := []string{"/api/groups", "/api/user_groups", "/api/admin/groups"}
 	
-	// اگر مسیر /api/groups بسته بود یا تغییر کرده بود، یک فال‌بک طلایی می‌زنیم (استفاده از آیدی‌های ۱ تا ۵)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("⚠️ Could not fetch groups. Using fallback IDs [1,2,3,4,5].")
-		return []int{1, 2, 3, 4, 5}
-	}
-	defer resp.Body.Close()
+	for _, ep := range endpoints {
+		req, _ := http.NewRequest("GET", baseURL+ep, nil)
+		req.Header.Add("Authorization", "Bearer "+token)
+		req.Header.Add("Accept", "application/json")
 
-	var groups []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&groups); err == nil {
-		var ids []int
-		for _, g := range groups {
-			if id, ok := g["id"].(float64); ok {
-				ids = append(ids, int(id))
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Do(req)
+		
+		if err == nil && resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
+			var groups []map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&groups); err == nil {
+				var ids []int
+				for _, g := range groups {
+					if id, ok := g["id"].(float64); ok {
+						ids = append(ids, int(id))
+					}
+				}
+				if len(ids) > 0 {
+					log.Printf("🔍 Auto-Extracted Pasargad Group IDs from %s: %v", ep, ids)
+					return ids
+				}
 			}
 		}
-		if len(ids) > 0 {
-			log.Printf("🔍 Auto-Extracted Pasargad Group IDs: %v", ids)
-			return ids
-		}
 	}
-	return []int{1, 2, 3, 4, 5}
+
+	// 🎯 اگر مسیر API را پیدا نکرد، مستقیماً از آیدی‌های دقیق سرور خودتان که در لاگ قبلی دیدیم استفاده می‌کند
+	log.Printf("⚠️ Using specific fallback IDs [1, 3] from your panel data.")
+	return []int{1, 3}
 }
 
-// ساخت کاربر با زبانِ اختصاصی پاسارگاد (استفاده از group_ids و proxy_settings)
+// ساخت کاربر با تزریق دقیق گروه‌ها
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	
-	// استخراج شماره گروه‌ها
 	groupIDs := GetPasargadGroupIDs(baseURL, token)
 
 	payload := map[string]interface{}{
@@ -85,8 +88,8 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 		"data_limit_reset_strategy": "no_reset",
 		"hwid_limit":                0,
 		"status":                    "active",
-		"group_ids":                 groupIDs, // 🎯 تزریق دقیق گروه‌ها
-		"proxy_settings": map[string]interface{}{ // 🎯 فیلد اختصاصی پاسارگاد
+		"group_ids":                 groupIDs, // تزریق دقیق [1, 3]
+		"proxy_settings": map[string]interface{}{
 			"vmess":       map[string]interface{}{},
 			"vless":       map[string]interface{}{},
 			"trojan":      map[string]interface{}{},
@@ -94,7 +97,6 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 		},
 	}
 
-	// مدیریت هوشمند زمان انقضا دقیقاً طبق دیتای دریافتی (null برای نامحدود)
 	if expireTimestamp > 0 {
 		payload["expire"] = expireTimestamp
 	} else {

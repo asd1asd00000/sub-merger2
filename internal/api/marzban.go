@@ -39,14 +39,39 @@ func GetMarzbanToken(nodeURL, username, password string) (string, error) {
 	return "", fmt.Errorf("marzban token not found")
 }
 
-func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64) (string, error) {
+// 🤖 موتور استخراج اتوماتیک کانکشن‌ها/گروه‌های پاسارگاد
+func GetMarzbanInbounds(nodeURL, token string) map[string]interface{} {
+	req, _ := http.NewRequest("GET", nodeURL+"/api/inbounds", nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return map[string]interface{}{}
+	}
+	defer resp.Body.Close()
+
+	var inbounds map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&inbounds)
+	return inbounds
+}
+
+// ساخت کاربر با اعمال تاریخ انقضا و تیک زدن تمام سرویس‌ها
+func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
+	inbounds := GetMarzbanInbounds(nodeURL, token)
+
 	payload := map[string]interface{}{
 		"username":                  username,
 		"data_limit":                nodeVolumeLimit,
-		"expire":                    0,
+		"expire":                    expireTimestamp, // اعمال تاریخ انقضا
 		"data_limit_reset_strategy": "no_reset",
-		"proxies":                   map[string]interface{}{},
-		"inbounds":                  map[string]interface{}{},
+		"proxies": map[string]interface{}{
+			"vmess":       map[string]interface{}{},
+			"vless":       map[string]interface{}{},
+			"trojan":      map[string]interface{}{},
+			"shadowsocks": map[string]interface{}{},
+		},
+		"inbounds":                  inbounds, // اعمال تمام سرویس‌ها/گروه‌های مجاز
 		"status":                    "active",
 	}
 	jsonData, _ := json.Marshal(payload)
@@ -104,7 +129,6 @@ func GetMarzbanUserUsage(nodeURL, token, targetUser string) (int64, error) {
 	return 0, fmt.Errorf("marzban could not find usage data")
 }
 
-// 🛡️ ترفند هوشمندانه برای جلوگیری از ارور ۴۲۲ هنگام قطع کاربر در مرزبان
 func DisableMarzbanUsers(nodeURL, token string, usernames []string) error {
 	client := &http.Client{Timeout: 10 * time.Second}
 	for _, u := range usernames {

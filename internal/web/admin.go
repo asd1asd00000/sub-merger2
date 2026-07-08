@@ -106,7 +106,6 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 🎯 دریافت پیام هشدار از URL (در صورت وجود)
 	alertMsg := r.URL.Query().Get("msg")
 
 	tmpl, err := template.ParseFiles("templates/admin.html")
@@ -120,7 +119,7 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		Host         string
 		Settings     models.SystemSettings
 		NodeStatus   map[string]string
-		AlertMessage string // متغیر جدید برای قالب
+		AlertMessage string
 	}{
 		Users:        userList,
 		Host:         r.Host,
@@ -168,6 +167,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 		nodeVolumeLimit := volumeLimitBytes * numNodes
 
 		var automaticallyGeneratedURLs []string
+		var resultMsgs []string // 🎯 متغیر جدید برای جمع‌آوری پیام‌های نتیجه ساخت کاربر
 
 		for i, node := range settings.Nodes {
 			var token, subLink string
@@ -186,13 +186,17 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// بررسی نتایج و ثبت پیام برای داشبورد
 			if err != nil {
 				log.Printf("❌ Failed processing Node %d [%s]: %v", i+1, node.URL, err)
+				resultMsgs = append(resultMsgs, fmt.Sprintf("❌ نود %d خطا", i+1))
 			} else if subLink == "" {
 				log.Printf("⚠️ Warning: Node %d [%s] returned an empty link for user %s", i+1, node.URL, username)
+				resultMsgs = append(resultMsgs, fmt.Sprintf("⚠️ نود %d بدون لینک", i+1))
 			} else {
 				log.Printf("✅ Successfully extracted Link from Node %d [%s]: %s", i+1, node.URL, subLink)
 				automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
+				resultMsgs = append(resultMsgs, fmt.Sprintf("✅ نود %d موفق", i+1))
 			}
 		}
 
@@ -210,7 +214,14 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 		}
 
 		db.SaveDB(database)
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+
+		// 🎯 چسباندن نتایج ساخت و ارسال به صفحه اصلی
+		finalMsg := strings.Join(resultMsgs, " | ")
+		if finalMsg == "" {
+			finalMsg = "✅ عملیات ساخت با موفقیت انجام شد"
+		}
+		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 		return
 	}
 
@@ -260,7 +271,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 
 		oldUsername := user.Username
 		
-		// ذخیره دیتابیس لوکال
 		user.Username = newUsername
 		user.VolumeLimit = newVolumeLimit
 		user.ExpireAt = newExpireAt
@@ -269,7 +279,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		database[userID] = user
 		db.SaveDB(database)
 
-		// 🎯 دریافت نتایج آپدیت به صورت همزمان (حذف Goroutine)
 		settings, _ := db.LoadSettings()
 		numNodes := int64(len(settings.Nodes))
 		if numNodes == 0 { numNodes = 1 }
@@ -297,7 +306,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// ساخت پیام سفارشی برای پنل مدیریت
 			if err != nil {
 				log.Printf("❌ Failed to edit/activate user %s on node [%s]: %v", targetUser, node.URL, err)
 				resultMsgs = append(resultMsgs, fmt.Sprintf("❌ نود %d خطا", i+1))
@@ -307,7 +315,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// چسباندن پیام‌ها به هم و ارسال به داشبورد
 		finalMsg := strings.Join(resultMsgs, " | ")
 		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)
 		http.Redirect(w, r, redirectURL, http.StatusSeeOther)

@@ -64,7 +64,6 @@ func GetNodeServiceIDs(nodeURL, token string) []int {
 	return []int{1}
 }
 
-// 🎯 ارتقا: دریافت expireTimestamp و ارسال به نود
 func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	serviceIDs := GetNodeServiceIDs(nodeURL, token)
 
@@ -72,7 +71,7 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 		{
 			"username":     username,
 			"limit_usage":  nodeVolumeLimit, 
-			"limit_expire": expireTimestamp, // قبلا 0 بود، الان زمان واقعی پاس داده میشه
+			"limit_expire": expireTimestamp,
 			"service_ids":  serviceIDs,
 			"enabled":      true,
 		},
@@ -117,6 +116,44 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 	}
 
 	return "", fmt.Errorf("could not extract subscription link properties")
+}
+
+// 🎯 تابع جدید: ویرایش و روشن کردن مجدد کاربر در گاردکور
+func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
+	baseURL := strings.TrimRight(nodeURL, "/")
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), nil)
+	reqGet.Header.Add("Authorization", "Bearer "+token)
+	respGet, err := client.Do(reqGet)
+	if err != nil { return err }
+	defer respGet.Body.Close()
+
+	if respGet.StatusCode != http.StatusOK {
+		return fmt.Errorf("user not found on guardcore node")
+	}
+
+	var user map[string]interface{}
+	json.NewDecoder(respGet.Body).Decode(&user)
+
+	user["limit_usage"] = nodeVolumeLimit
+	user["limit_expire"] = expireTimestamp
+	user["enabled"] = true // روشن کردن مجدد!
+
+	jsonData, _ := json.Marshal(user)
+	reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), bytes.NewBuffer(jsonData))
+	reqPut.Header.Add("Authorization", "Bearer "+token)
+	reqPut.Header.Add("Content-Type", "application/json")
+
+	respPut, err := client.Do(reqPut)
+	if err != nil { return err }
+	defer respPut.Body.Close()
+
+	if respPut.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(respPut.Body)
+		return fmt.Errorf("guardcore update failed, status: %d, response: %s", respPut.StatusCode, string(bodyBytes))
+	}
+	return nil
 }
 
 func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {

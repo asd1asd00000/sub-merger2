@@ -67,7 +67,7 @@ func GetPasargadGroupIDs(baseURL, token string) []int {
 			}
 		}
 	}
-	return []int{1, 3} // فال‌بک تضمینی سرور شما
+	return []int{1, 3}
 }
 
 func extractSubURL(baseURL string, data map[string]interface{}) string {
@@ -85,7 +85,6 @@ func extractSubURL(baseURL string, data map[string]interface{}) string {
 	return ""
 }
 
-// 🎯 ساخت کاربر و تضمین ۱۰۰٪ دریافت لینک
 func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	groupIDs := GetPasargadGroupIDs(baseURL, token)
@@ -130,14 +129,9 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// ۱. تلاش برای خواندن لینک از جواب مستقیم ساخت کاربر
 	subLink := extractSubURL(baseURL, result)
-	if subLink != "" {
-		return subLink, nil
-	}
+	if subLink != "" { return subLink, nil }
 
-	// ۲. استراتژی Fallback: رفتن و گرفتن اطلاعات کاربر تازه متولد شده!
-	log.Printf("⚠️ Pasargad didn't return link directly. Executing GET fallback for user %s...", username)
 	reqGet, _ := http.NewRequest("GET", baseURL+"/api/user/"+username, nil)
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
@@ -147,12 +141,55 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 		json.NewDecoder(respGet.Body).Decode(&getUser)
 		
 		subLink = extractSubURL(baseURL, getUser)
-		if subLink != "" {
-			return subLink, nil
-		}
+		if subLink != "" { return subLink, nil }
 	}
 
 	return "", fmt.Errorf("user created successfully in panel, but Sub-Merger could not extract the subscription_url")
+}
+
+// 🎯 تابع جدید: ویرایش و روشن کردن مجدد کاربر در پاسارگاد
+func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
+	baseURL := strings.TrimRight(nodeURL, "/")
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// ۱. خواندن اطلاعات فعلی کاربر (برای حفظ کانکشن‌ها)
+	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", baseURL, targetUser), nil)
+	reqGet.Header.Add("Authorization", "Bearer "+token)
+	respGet, err := client.Do(reqGet)
+	if err != nil { return err }
+	defer respGet.Body.Close()
+
+	if respGet.StatusCode != http.StatusOK {
+		return fmt.Errorf("user not found on node")
+	}
+
+	var user map[string]interface{}
+	json.NewDecoder(respGet.Body).Decode(&user)
+
+	// ۲. آپدیت مقادیر کلیدی
+	user["data_limit"] = nodeVolumeLimit
+	if expireTimestamp > 0 {
+		user["expire"] = expireTimestamp
+	} else {
+		user["expire"] = nil
+	}
+	user["status"] = "active" // روشن کردن مجدد!
+
+	// ۳. ارسال اطلاعات جدید
+	jsonData, _ := json.Marshal(user)
+	reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/user/%s", baseURL, targetUser), bytes.NewBuffer(jsonData))
+	reqPut.Header.Add("Authorization", "Bearer "+token)
+	reqPut.Header.Add("Content-Type", "application/json")
+
+	respPut, err := client.Do(reqPut)
+	if err != nil { return err }
+	defer respPut.Body.Close()
+
+	if respPut.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(respPut.Body)
+		return fmt.Errorf("update failed, status: %d, response: %s", respPut.StatusCode, string(bodyBytes))
+	}
+	return nil
 }
 
 func GetMarzbanUserUsage(nodeURL, token, targetUser string) (int64, error) {

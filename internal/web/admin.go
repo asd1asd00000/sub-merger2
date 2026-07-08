@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -162,7 +163,6 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		var automaticallyGeneratedURLs []string
 
-		// 🎯 ارتقا: پاس دادن پارامتر expireTimestamp به هر دو پنل
 		for i, node := range settings.Nodes {
 			var token, subLink string
 			var err error
@@ -180,7 +180,12 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			if err == nil && subLink != "" {
+			if err != nil {
+				log.Printf("❌ Failed processing Node %d [%s]: %v", i+1, node.URL, err)
+			} else if subLink == "" {
+				log.Printf("⚠️ Warning: Node %d [%s] returned an empty link for user %s", i+1, node.URL, username)
+			} else {
+				log.Printf("✅ Successfully extracted Link from Node %d [%s]: %s", i+1, node.URL, subLink)
 				automaticallyGeneratedURLs = append(automaticallyGeneratedURLs, subLink)
 			}
 		}
@@ -225,29 +230,77 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		r.ParseForm()
-		username := strings.TrimSpace(r.FormValue("username"))
-		urls := r.Form["urls"]
-
-		if username != "" {
-			user.Username = username
+		
+		newUsername := strings.TrimSpace(r.FormValue("username"))
+		if newUsername == "" {
+			newUsername = user.Username
 		}
 		
 		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
 		volStr = strings.ReplaceAll(volStr, ",", ".")
 		volumeGB, _ := strconv.ParseFloat(volStr, 64)
-		user.VolumeLimit = int64(volumeGB * 1024 * 1024 * 1024)
+		newVolumeLimit := int64(volumeGB * 1024 * 1024 * 1024)
 		
 		expireDays, _ := strconv.Atoi(r.FormValue("expire_days"))
+		var newExpireAt int64 = 0
 		if expireDays > 0 {
-			user.ExpireAt = time.Now().AddDate(0, 0, expireDays).Unix()
-		} else {
-			user.ExpireAt = 0
+			newExpireAt = time.Now().AddDate(0, 0, expireDays).Unix()
 		}
+
+		urls := r.Form["urls"]
+		if len(urls) == 0 {
+			urls = user.URLs
+		}
+
+		// حفظ یوزرنیم قدیمی جهت پیدا کردن کاربر در نودها
+		oldUsername := user.Username
 		
+		// ۱. ذخیره اطلاعات جدید در دیتابیس لوکال
+		user.Username = newUsername
+		user.VolumeLimit = newVolumeLimit
+		user.ExpireAt = newExpireAt
 		user.URLs = urls
 		
 		database[userID] = user
 		db.SaveDB(database)
+
+		// ۲. 🎯 ارسال دستور آپدیت به تمام نودها به صورت پس‌زمینه (Goroutine)
+		go func() {
+			settings, _ := db.LoadSettings()
+			numNodes := int64(len(settings.Nodes))
+			if numNodes == 0 { numNodes = 1 }
+			nodeVolumeLimit := newVolumeLimit * numNodes
+
+			for i, node := range settings.Nodes {
+				targetUser := fmt.Sprintf("%s_%d", oldUsername, i+1)
+				var err error
+
+				if node.PanelType == "marzban" {
+					token, _ := api.GetMarzbanToken(node.URL, node.Username, node.Password)
+					if token != "" {
+						err = api.UpdateMarzbanUser(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
+					} else {
+						err = fmt.Errorf("auth failed")
+					}
+				} else {
+					token, _ := api.GetToken(node.URL, node.Username, node.Password)
+					if token != "" {
+						err = api.UpdateSubscription(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
+					} else {
+						err = fmt.Errorf("auth failed")
+					}
+				}
+
+				// ثبت لاگ وضعیت ویرایش
+				if err != nil {
+					log.Printf("❌ Failed to edit/activate user %s on node [%s]: %v", targetUser, node.URL, err)
+				} else {
+					log.Printf("✅ User %s successfully edited & activated on node [%s]", targetUser, node.URL)
+				}
+			}
+		}()
+
+		// انتقال فوری کاربر به صفحه اصلی (بدون معطلی)
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}

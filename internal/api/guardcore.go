@@ -118,11 +118,12 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 	return "", fmt.Errorf("could not extract subscription link properties")
 }
 
-// 🎯 تابع جدید: ویرایش و روشن کردن مجدد کاربر در گاردکور
+// 🎯 تابع ارتقا یافته: ویرایش حجم و شلیک تضمینی برای روشن شدن کاربر
 func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 
+	// ۱. دریافت اطلاعات فعلی کاربر
 	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), nil)
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
@@ -136,9 +137,10 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	var user map[string]interface{}
 	json.NewDecoder(respGet.Body).Decode(&user)
 
+	// ۲. اعمال حجم و زمان جدید
 	user["limit_usage"] = nodeVolumeLimit
 	user["limit_expire"] = expireTimestamp
-	user["enabled"] = true // روشن کردن مجدد!
+	user["enabled"] = true
 
 	jsonData, _ := json.Marshal(user)
 	reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), bytes.NewBuffer(jsonData))
@@ -153,6 +155,20 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 		bodyBytes, _ := io.ReadAll(respPut.Body)
 		return fmt.Errorf("guardcore update failed, status: %d, response: %s", respPut.StatusCode, string(bodyBytes))
 	}
+
+	// ۳. 🎯 شلیک نهایی (تضمین روشن شدن): استفاده از اندپوینت اختصاصی Enable در گاردکور
+	enablePayload := map[string][]string{
+		"usernames": {targetUser},
+	}
+	enableData, _ := json.Marshal(enablePayload)
+	reqEnable, _ := http.NewRequest("POST", baseURL+"/api/subscriptions/enable", bytes.NewBuffer(enableData))
+	reqEnable.Header.Add("Authorization", "Bearer "+token)
+	reqEnable.Header.Add("Content-Type", "application/json")
+	respEnable, err := client.Do(reqEnable)
+	if err == nil {
+		respEnable.Body.Close()
+	}
+
 	return nil
 }
 

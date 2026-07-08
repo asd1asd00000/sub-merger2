@@ -12,6 +12,13 @@
         .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 20px; }
         h2 { color: #3b82f6; margin: 0; font-size: 22px; }
         
+        /* استایل پیام‌های موفقیت و خطا */
+        .toast-alert { background: #1f2937; border-left: 4px solid #10b981; color: #fff; padding: 15px 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 15px; animation: slideDown 0.3s ease-out; }
+        .toast-alert.has-error { border-left-color: #ef4444; }
+        .toast-alert button { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 18px; padding: 0; }
+        .toast-alert button:hover { color: #fff; }
+        @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
         .btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; text-decoration: none; font-size: 13px; display: inline-block; text-align: center; transition: opacity 0.2s; font-family: inherit; }
         .btn:hover { opacity: 0.8; }
         .btn-logout { background: #374151; color: #cbd5e1; }
@@ -35,7 +42,6 @@
         .modal label { display: block; margin: 10px 0 5px 0; font-weight: bold; font-size: 14px; color: #d1d5db; }
         .modal input[type="text"], .modal input[type="password"], .modal input[type="number"], .modal select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: #fff; box-sizing: border-box; font-family: inherit; }
         
-        /* Custom Delete Modal */
         #deleteModal .modal-content { max-width: 380px; text-align: center; }
         #deleteModal h3 { color: #ef4444; border-bottom: none; padding-bottom: 0; }
         
@@ -59,7 +65,6 @@
         .page-btn:hover:not(:disabled) { background: #374151; }
         .page-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
 
-        /* Tabs Styles */
         .tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid #374151; margin-bottom: 20px; gap: 4px; }
         .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; min-width: 80px; }
         .tab-btn:hover { color: #fff; background: #2d3748; }
@@ -76,6 +81,24 @@
                 <h2>👥 Subscriptions List</h2>
                 <a href="/admin/logout" class="btn btn-logout">Logout</a>
             </div>
+            
+            {{ if .AlertMessage }}
+            <div id="toastAlert" class="toast-alert">
+                <span id="toastText">{{ .AlertMessage }}</span>
+                <button onclick="document.getElementById('toastAlert').style.display='none'">✖</button>
+            </div>
+            <script>
+                // اگر در متن پیام علامت ❌ وجود داشت، رنگ باکس را قرمز کن
+                if (document.getElementById('toastText').innerText.includes('❌')) {
+                    document.getElementById('toastAlert').classList.add('has-error');
+                }
+                // مخفی کردن اتوماتیک پیام بعد از ۶ ثانیه
+                setTimeout(function() {
+                    var t = document.getElementById('toastAlert');
+                    if(t) t.style.display = 'none';
+                }, 6000);
+            </script>
+            {{ end }}
             
             <div class="action-buttons">
                 <a href="/admin/add" class="btn btn-add">➕ Add New User</a>
@@ -276,11 +299,9 @@
     </div>
 
     <script>
-        // Modal functions
         function openModal() { document.getElementById('settingsModal').style.display = 'flex'; }
         function closeModal() { document.getElementById('settingsModal').style.display = 'none'; }
         
-        // Custom Delete Modal functions
         function openDeleteModal(deleteUrl, username) {
             document.getElementById('deleteUserName').innerText = username;
             document.getElementById('confirmDeleteBtn').href = deleteUrl;
@@ -288,7 +309,6 @@
         }
         function closeDeleteModal() { document.getElementById('deleteModal').style.display = 'none'; }
 
-        // Close popups on outside click
         window.onclick = function(event) {
             const settingsModal = document.getElementById('settingsModal');
             const deleteModal = document.getElementById('deleteModal');
@@ -296,7 +316,6 @@
             if (event.target == deleteModal) { closeDeleteModal(); }
         }
 
-        // Tab Switching function
         function switchTab(evt, tabId) {
             var i, tabcontent, tablinks;
             tabcontent = document.getElementsByClassName("tab-content");
@@ -313,7 +332,6 @@
             evt.currentTarget.classList.add("active");
         }
 
-        // Table logic, sorting, and pagination
         document.addEventListener("DOMContentLoaded", function() {
             const allRows = Array.from(document.querySelectorAll('.user-row'));
             const rowsPerPageSelect = document.getElementById('rowsPerPage');

@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,6 +106,9 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 🎯 دریافت پیام هشدار از URL (در صورت وجود)
+	alertMsg := r.URL.Query().Get("msg")
+
 	tmpl, err := template.ParseFiles("templates/admin.html")
 	if err != nil {
 		http.Error(w, "❌ Template Parsing Error: "+err.Error(), http.StatusInternalServerError)
@@ -112,15 +116,17 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	data := struct {
-		Users      []UserItem
-		Host       string
-		Settings   models.SystemSettings
-		NodeStatus map[string]string
+		Users        []UserItem
+		Host         string
+		Settings     models.SystemSettings
+		NodeStatus   map[string]string
+		AlertMessage string // متغیر جدید برای قالب
 	}{
-		Users:      userList,
-		Host:       r.Host,
-		Settings:   settings,
-		NodeStatus: nodeStatus,
+		Users:        userList,
+		Host:         r.Host,
+		Settings:     settings,
+		NodeStatus:   nodeStatus,
+		AlertMessage: alertMsg,
 	}
 	
 	err = tmpl.Execute(w, data)
@@ -252,10 +258,9 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			urls = user.URLs
 		}
 
-		// حفظ یوزرنیم قدیمی جهت پیدا کردن کاربر در نودها
 		oldUsername := user.Username
 		
-		// ۱. ذخیره اطلاعات جدید در دیتابیس لوکال
+		// ذخیره دیتابیس لوکال
 		user.Username = newUsername
 		user.VolumeLimit = newVolumeLimit
 		user.ExpireAt = newExpireAt
@@ -264,44 +269,48 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		database[userID] = user
 		db.SaveDB(database)
 
-		// ۲. 🎯 ارسال دستور آپدیت به تمام نودها به صورت پس‌زمینه (Goroutine)
-		go func() {
-			settings, _ := db.LoadSettings()
-			numNodes := int64(len(settings.Nodes))
-			if numNodes == 0 { numNodes = 1 }
-			nodeVolumeLimit := newVolumeLimit * numNodes
+		// 🎯 دریافت نتایج آپدیت به صورت همزمان (حذف Goroutine)
+		settings, _ := db.LoadSettings()
+		numNodes := int64(len(settings.Nodes))
+		if numNodes == 0 { numNodes = 1 }
+		nodeVolumeLimit := newVolumeLimit * numNodes
 
-			for i, node := range settings.Nodes {
-				targetUser := fmt.Sprintf("%s_%d", oldUsername, i+1)
-				var err error
+		var resultMsgs []string
 
-				if node.PanelType == "marzban" {
-					token, _ := api.GetMarzbanToken(node.URL, node.Username, node.Password)
-					if token != "" {
-						err = api.UpdateMarzbanUser(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
-					} else {
-						err = fmt.Errorf("auth failed")
-					}
+		for i, node := range settings.Nodes {
+			targetUser := fmt.Sprintf("%s_%d", oldUsername, i+1)
+			var err error
+
+			if node.PanelType == "marzban" {
+				token, _ := api.GetMarzbanToken(node.URL, node.Username, node.Password)
+				if token != "" {
+					err = api.UpdateMarzbanUser(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
 				} else {
-					token, _ := api.GetToken(node.URL, node.Username, node.Password)
-					if token != "" {
-						err = api.UpdateSubscription(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
-					} else {
-						err = fmt.Errorf("auth failed")
-					}
+					err = fmt.Errorf("auth failed")
 				}
-
-				// ثبت لاگ وضعیت ویرایش
-				if err != nil {
-					log.Printf("❌ Failed to edit/activate user %s on node [%s]: %v", targetUser, node.URL, err)
+			} else {
+				token, _ := api.GetToken(node.URL, node.Username, node.Password)
+				if token != "" {
+					err = api.UpdateSubscription(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
 				} else {
-					log.Printf("✅ User %s successfully edited & activated on node [%s]", targetUser, node.URL)
+					err = fmt.Errorf("auth failed")
 				}
 			}
-		}()
 
-		// انتقال فوری کاربر به صفحه اصلی (بدون معطلی)
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			// ساخت پیام سفارشی برای پنل مدیریت
+			if err != nil {
+				log.Printf("❌ Failed to edit/activate user %s on node [%s]: %v", targetUser, node.URL, err)
+				resultMsgs = append(resultMsgs, fmt.Sprintf("❌ نود %d خطا", i+1))
+			} else {
+				log.Printf("✅ User %s successfully edited & activated on node [%s]", targetUser, node.URL)
+				resultMsgs = append(resultMsgs, fmt.Sprintf("✅ نود %d موفق", i+1))
+			}
+		}
+
+		// چسباندن پیام‌ها به هم و ارسال به داشبورد
+		finalMsg := strings.Join(resultMsgs, " | ")
+		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 		return
 	}
 

@@ -118,12 +118,11 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 	return "", fmt.Errorf("could not extract subscription link properties")
 }
 
-// 🎯 تابع ارتقا یافته: ویرایش حجم و زمان با پکیج کاملاً تمیز (Clean Payload)
+// 🎯 تابع ارتقا یافته دقیقاً بر اساس مستندات ارسالی شما
 func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	// ۱. دریافت اطلاعات فعلی کاربر (فقط برای اینکه آیدی کانکشن‌هایش را گم نکنیم)
 	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), nil)
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
@@ -137,29 +136,19 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	var user map[string]interface{}
 	json.NewDecoder(respGet.Body).Decode(&user)
 
-	// ۲. 🧹 جراحی و پاکسازی: ساخت یک پکیج جدید فقط با فیلدهای مجاز
-	// با این کار سرور دیگر نمی‌تواند زمان قبلی را بخواند و مجبور است زمان ما را اعمال کند.
+	// 🧹 ساخت پکیج دقیقاً مطابق با بخش Request body مستندات گاردکور
 	cleanPayload := map[string]interface{}{
 		"limit_usage":  nodeVolumeLimit,
 		"limit_expire": expireTimestamp,
-		"enabled":      true,
 	}
 
-	// اگر می‌خواهیم زمان نامحدود شود، برای اطمینان فیلد expire_at سرور را هم خنثی می‌کنیم
-	if expireTimestamp == 0 {
-		cleanPayload["expire_at"] = nil
-	} else {
-		cleanPayload["expire_at"] = expireTimestamp
-	}
-
-	// حفظ کردن سرویس‌ها (کانکشن‌ها)
+	// استخراج service_ids بر اساس مستندات
 	if sIDs, ok := user["service_ids"]; ok {
 		cleanPayload["service_ids"] = sIDs
 	} else if sID, ok := user["service_id"]; ok {
 		cleanPayload["service_ids"] = []interface{}{sID}
 	}
 
-	// ۳. ارسال پکیج تمیز به سرور
 	jsonData, _ := json.Marshal(cleanPayload)
 	reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), bytes.NewBuffer(jsonData))
 	reqPut.Header.Add("Authorization", "Bearer "+token)
@@ -174,7 +163,7 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 		return fmt.Errorf("guardcore update failed, status: %d, response: %s", respPut.StatusCode, string(bodyBytes))
 	}
 
-	// ۴. شلیک نهایی (تضمین ۱۰۰٪ روشن شدن از لیست سیاه)
+	// 🎯 شلیک دوم برای فعال‌سازی (چون در مستندات بالا، PUT این کار را نمی‌کرد)
 	enablePayload := map[string][]string{
 		"usernames": {targetUser},
 	}

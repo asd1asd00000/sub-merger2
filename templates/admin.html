@@ -12,7 +12,6 @@
         .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 20px; }
         h2 { color: #3b82f6; margin: 0; font-size: 22px; }
         
-        /* استایل پیام پاپ‌آپ (Toast) */
         .toast-alert { background: #1f2937; border-left: 4px solid #10b981; color: #fff; padding: 15px 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 15px; animation: slideDown 0.3s ease-out; }
         .toast-alert.has-error { border-left-color: #ef4444; }
         .toast-alert button { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 18px; padding: 0; }
@@ -33,7 +32,6 @@
         .btn-restore { background: #14b8a6; color: white; padding: 10px 15px; font-size: 14px; }
         .btn-settings { background: #64748b; color: white; padding: 10px 15px; font-size: 14px; }
         
-        /* Modal Styles */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; backdrop-filter: blur(4px); }
         .modal-content { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 580px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; animation: scaleIn 0.2s ease-out; }
         @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -115,10 +113,10 @@
                 <thead>
                     <tr>
                         <th width="5%">#</th>
-                        <th width="30%">Username</th>
+                        <th width="20%">Username</th>
                         <th width="20%" id="sortLastActive" class="sortable" title="Click to sort by date">Last Active ↕️</th>
                         <th width="20%">Actions</th>
-                        <th width="25%" class="text-center">Dashboard</th>
+                        <th width="35%" class="text-center">Dashboard</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -132,6 +130,8 @@
                             <button type="button" class="btn btn-delete" onclick="openDeleteModal('/admin/delete/{{ .ID }}', '{{ .User.Username }}')">Del</button>
                         </td>
                         <td class="text-center">
+                            <span style="background: {{ .StatusColor }}; color: white; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; margin-right: 5px; display: inline-block; cursor: default; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{{ .StatusText }}</span>
+                            
                             <button class="btn btn-copy-sub" onclick="copyQuickSub('https://{{ $.Host }}/sub/{{ .ID }}', this)">📋 Copy</button>
                             <a href="/sub/{{ .ID }}" target="_blank" class="btn btn-dash">🔗 View</a>
                         </td>
@@ -257,7 +257,6 @@
     </div>
 
     <script>
-        // 🎯 سیستم هوشمند خواندن پیام و حذف آن از آدرس‌بار
         document.addEventListener("DOMContentLoaded", function() {
             const urlParams = new URLSearchParams(window.location.search);
             const msg = urlParams.get('msg');
@@ -268,16 +267,13 @@
                 if (msg.includes('❌')) { toast.classList.add('has-error'); }
                 toast.style.display = 'flex';
                 
-                // پاک کردن تمیز URL بدون رفرش صفحه
                 const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
                 window.history.replaceState({path: cleanUrl}, '', cleanUrl);
                 
-                // مخفی کردن پاپ‌آپ بعد از 2.5 ثانیه
                 setTimeout(() => { toast.style.display = 'none'; }, 2500);
             }
         });
 
-        // 🎯 سیستم کپی سریع برای ادمین
         function copyQuickSub(text, btnElem) {
             var ta = document.createElement("textarea");
             ta.value = text;

@@ -67,9 +67,12 @@ func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
+// 🎯 ارتقای ساختار کاربر برای ارسال وضعیت به قالب
 type UserItem struct {
-	ID   string
-	User models.User
+	ID          string
+	User        models.User
+	StatusText  string
+	StatusColor string
 }
 
 func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
@@ -82,8 +85,24 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	settings, _ := db.LoadSettings()
 	
 	var userList []UserItem
+	now := time.Now().Unix()
+
 	for id, u := range database {
-		userList = append(userList, UserItem{ID: id, User: u})
+		// 🎯 محاسبه هوشمند وضعیت اکانت بر اساس زمان انقضا
+		statusTxt := "🟢 Active"
+		statusCol := "#10b981" // رنگ سبز
+
+		if u.ExpireAt > 0 && u.ExpireAt < now {
+			statusTxt = "🔴 Expired"
+			statusCol = "#ef4444" // رنگ قرمز
+		}
+
+		userList = append(userList, UserItem{
+			ID:          id,
+			User:        u,
+			StatusText:  statusTxt,
+			StatusColor: statusCol,
+		})
 	}
 
 	sort.Slice(userList, func(i, j int) bool {
@@ -271,7 +290,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		urlsRaw := r.Form["urls"]
 		if len(urlsRaw) == 0 { urlsRaw = user.URLs }
 		
-		// پاکسازی فیلدهای خالی فرم
 		var cleanUrls []string
 		for _, u := range urlsRaw {
 			if strings.TrimSpace(u) != "" { cleanUrls = append(cleanUrls, u) }
@@ -286,7 +304,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 
 		var resultMsgs []string
 
-		// حلقه بررسی نودها و گرفتن لینک‌های احتمالی جدید
 		for i, node := range settings.Nodes {
 			targetUser := fmt.Sprintf("%s_%d", oldUsername, i+1)
 			var err error
@@ -311,7 +328,6 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 				log.Printf("✅ User %s successfully edited & activated on node [%s]", targetUser, node.URL)
 				resultMsgs = append(resultMsgs, fmt.Sprintf("✅ نود %d موفق", i+1))
 				
-				// 🎯 اضافه کردن لینک جایزه (در صورت متولد شدن کاربر در این نود)
 				if newlyCreatedLink != "" {
 					alreadyExists := false
 					for _, u := range cleanUrls {
@@ -324,11 +340,10 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// 🎯 ذخیره در دیتابیس لوکال بعد از پایان عملیات شبکه (تا لینک‌های جدید ثبت شوند)
 		user.Username = newUsername
 		user.VolumeLimit = newVolumeLimit
 		user.ExpireAt = newExpireAt
-		user.URLs = cleanUrls // لیست نهایی شامل لینک‌های ترمیم شده
+		user.URLs = cleanUrls
 		
 		database[userID] = user
 		db.SaveDB(database)

@@ -1,9 +1,8 @@
 #!/bin/bash
-# Sub-Merger Interactive Auto-Installer (Pro Hardcoded Edition)
+# Sub-Merger Interactive Auto-Installer (Pro Hardcoded Edition with MariaDB)
 
 # -------------------------------------------------------------
 # Anti-Sanction & Stability Configuration
-# اعمال تنظیمات ضدتحریم و قفل کردن آپدیت خودکار زبان Go
 # -------------------------------------------------------------
 export GOTOOLCHAIN=local
 export GOPROXY=https://goproxy.io,direct
@@ -40,7 +39,6 @@ if [ "$MENU_OPTION" == "2" ]; then
 
     echo -e "2️⃣  ${C_CYAN}Cleaning Nginx configs and revoking SSL...${C_DEF}"
     if [ -f /etc/nginx/sites-available/sub-merger ]; then
-        # استخراج هوشمندانه دامنه برای حذف تمیز SSL از سرور لتس‌انکریپت
         DOMAIN_TO_REMOVE=$(grep server_name /etc/nginx/sites-available/sub-merger | awk '{print $2}' | tr -d ';')
         if [ ! -z "$DOMAIN_TO_REMOVE" ]; then
             certbot delete --cert-name $DOMAIN_TO_REMOVE --non-interactive > /dev/null 2>&1
@@ -56,7 +54,10 @@ if [ "$MENU_OPTION" == "2" ]; then
     echo -e "4️⃣  ${C_CYAN}Deleting database and configuration folder...${C_DEF}"
     rm -rf /etc/merge_subs/
 
-    echo -e "5️⃣  ${C_CYAN}Freeing up ports in firewall (UFW)...${C_DEF}"
+    echo -e "5️⃣  ${C_CYAN}Removing MariaDB Database and User...${C_DEF}"
+    mysql -u root -e "DROP DATABASE IF EXISTS submerger; DROP USER IF EXISTS 'subadmin'@'localhost';" > /dev/null 2>&1
+
+    echo -e "6️⃣  ${C_CYAN}Freeing up ports in firewall (UFW)...${C_DEF}"
     ufw delete allow 5000/tcp > /dev/null 2>&1
 
     echo -e "\n✅ ${C_GREEN}Sub-Merger has been completely wiped from your server!${C_DEF}"
@@ -87,30 +88,41 @@ echo "⚠️  Note: If you want to install SSL, your subdomain MUST be pointed t
 read -p "🌐 Enter Subdomain (e.g., sub.domain.com) [Leave blank for IP only]: " DOMAIN
 echo "================================================="
 
-# 2. Install dependencies
+# 2. Install dependencies (Added mariadb-server)
 echo -e "📥 ${C_CYAN}Installing required packages...${C_DEF}"
-apt update && apt install zip git wget curl jq nginx certbot python3-certbot-nginx -y
+apt update && apt install zip git wget curl jq nginx certbot python3-certbot-nginx mariadb-server -y
 
-# 3. Install Go (Hardcoded to 1.22 via Ubuntu Official Repos to bypass Google CDN bans)
+# 3. Configure MariaDB Database
+echo -e "🗄️  ${C_CYAN}Configuring MariaDB Server...${C_DEF}"
+# تولید یک پسورد ۲۴ کاراکتری به شدت امن و غیرقابل حدس
+DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9!@#%^&*' | head -c 24)
+
+sudo mysql -u root <<EOF
+CREATE DATABASE IF NOT EXISTS submerger CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'subadmin'@'localhost' IDENTIFIED BY '${DB_PASS}';
+GRANT ALL PRIVILEGES ON submerger.* TO 'subadmin'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+mkdir -p /etc/merge_subs
+echo "${DB_PASS}" > /etc/merge_subs/.db_secret
+chmod 600 /etc/merge_subs/.db_secret
+
+# 4. Install Go (Hardcoded to 1.22 via Ubuntu Official Repos)
 export PATH=$PATH:/snap/bin:/usr/local/go/bin
 if ! command -v go &> /dev/null; then
     echo -e "📥 ${C_CYAN}Installing Go 1.22 (Hardcoded via Snap/Apt)...${C_DEF}"
-    
-    # نصب از طریق اسنپ یا اپت برای جلوگیری از ارور 404/403 گوگل
     snap install go --channel=1.22/stable --classic || apt install golang-go -y
-    
     export PATH=$PATH:/snap/bin:/usr/local/go/bin
     
-    # ذخیره تنظیمات ضدتحریم برای استفاده‌های دستی در آینده
     echo 'export PATH=$PATH:/snap/bin:/usr/local/go/bin' >> ~/.bashrc
     echo 'export GOTOOLCHAIN=local' >> ~/.bashrc
     echo 'export GOPROXY=https://goproxy.io,direct' >> ~/.bashrc
     echo 'export GOSUMDB=off' >> ~/.bashrc
 fi
 
-# 4. Create settings directory and json
-echo -e "⚙️  ${C_CYAN}Configuring database and credentials...${C_DEF}"
-mkdir -p /etc/merge_subs
+# 5. Create settings json
+echo -e "⚙️  ${C_CYAN}Configuring application credentials...${C_DEF}"
 cat <<EOF > /etc/merge_subs/settings.json
 {
   "admin_username": "$ADMIN_USER",
@@ -126,21 +138,26 @@ cat <<EOF > /etc/merge_subs/settings.json
 }
 EOF
 
-# 5. Build the Go project (With Toolchain lockdown)
+# 6. Build the Go project
 echo -e "⚙️  ${C_CYAN}Building the core application...${C_DEF}"
 go clean -modcache
 go mod edit -go=1.22.0
 go mod edit -toolchain=none
 go mod tidy
+
+# دریافت درایور دیتابیس برای زبان گو
+echo -e "📥 ${C_CYAN}Fetching Go SQL Driver...${C_DEF}"
+go get -u github.com/go-sql-driver/mysql
+
 go build -o /usr/local/bin/sub-merger-app cmd/server/main.go
 chmod +x /usr/local/bin/sub-merger-app
 
-# 6. Create and start Systemd service
+# 7. Create and start Systemd service
 echo -e "🛠️  ${C_CYAN}Setting up Systemd service...${C_DEF}"
 cat <<EOF > /etc/systemd/system/sub-merger.service
 [Unit]
 Description=Sub-Merger Panel Service
-After=network.target
+After=network.target mysql.service mariadb.service
 
 [Service]
 Type=simple
@@ -158,7 +175,7 @@ systemctl daemon-reload
 systemctl enable sub-merger.service
 systemctl restart sub-merger.service
 
-# 7. Configure Nginx and SSL
+# 8. Configure Nginx and SSL
 FINAL_URL="http://$(curl -s ifconfig.me):5000/admin"
 
 if [ ! -z "$DOMAIN" ]; then
@@ -190,7 +207,7 @@ else
     ufw allow 5000/tcp > /dev/null 2>&1
 fi
 
-# 8. Print final credentials in a perfect ASCII box
+# 9. Print final credentials
 echo -e ""
 echo -e "${C_BOX}╭──────────────────────────────────────────────────────────────────────╮${C_DEF}"
 echo -e "${C_BOX}│${C_DEF}  ${C_GREEN}✅ Sub-Merger Panel Installed Successfully!${C_DEF}                          ${C_BOX}│${C_DEF}"
@@ -200,4 +217,5 @@ printf "${C_BOX}│${C_DEF}  %b %-55s ${C_BOX}│\n${C_DEF}" "👤 ${C_YELLOW}Us
 printf "${C_BOX}│${C_DEF}  %b %-55s ${C_BOX}│\n${C_DEF}" "🔑 ${C_YELLOW}Password: ${C_DEF}" "$ADMIN_PASS"
 echo -e "${C_BOX}╰──────────────────────────────────────────────────────────────────────╯${C_DEF}"
 echo -e "💡 ${C_GREEN}Note:${C_DEF} Please save these credentials in a safe place."
+echo -e "🗄️  ${C_YELLOW}Database is ready and secured automatically.${C_DEF}"
 echo -e ""

@@ -107,13 +107,14 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 🎯 خواندن زنده ۴۰ خط آخر لاگ‌های سیستم
 	logCmd := exec.Command("journalctl", "-u", "sub-merger", "-n", "40", "--no-pager")
 	logOut, err := logCmd.Output()
 	logsStr := string(logOut)
 	if err != nil || logsStr == "" {
 		logsStr = "No logs available or no permission to read journalctl."
 	}
+
+	alertMsg := r.URL.Query().Get("msg")
 
 	tmpl, err := template.ParseFiles("templates/admin.html")
 	if err != nil {
@@ -122,17 +123,19 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	data := struct {
-		Users      []UserItem
-		Host       string
-		Settings   models.SystemSettings
-		NodeStatus map[string]string
-		Logs       string // ارسال لاگ به قالب
+		Users        []UserItem
+		Host         string
+		Settings     models.SystemSettings
+		NodeStatus   map[string]string
+		Logs         string
+		AlertMessage string
 	}{
-		Users:      userList,
-		Host:       r.Host,
-		Settings:   settings,
-		NodeStatus: nodeStatus,
-		Logs:       logsStr,
+		Users:        userList,
+		Host:         r.Host,
+		Settings:     settings,
+		NodeStatus:   nodeStatus,
+		Logs:         logsStr,
+		AlertMessage: alertMsg,
 	}
 	
 	err = tmpl.Execute(w, data)
@@ -265,18 +268,16 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			newExpireAt = time.Now().AddDate(0, 0, expireDays).Unix()
 		}
 
-		urls := r.Form["urls"]
-		if len(urls) == 0 { urls = user.URLs }
+		urlsRaw := r.Form["urls"]
+		if len(urlsRaw) == 0 { urlsRaw = user.URLs }
+		
+		// پاکسازی فیلدهای خالی فرم
+		var cleanUrls []string
+		for _, u := range urlsRaw {
+			if strings.TrimSpace(u) != "" { cleanUrls = append(cleanUrls, u) }
+		}
 
 		oldUsername := user.Username
-		
-		user.Username = newUsername
-		user.VolumeLimit = newVolumeLimit
-		user.ExpireAt = newExpireAt
-		user.URLs = urls
-		
-		database[userID] = user
-		db.SaveDB(database)
 
 		settings, _ := db.LoadSettings()
 		numNodes := int64(len(settings.Nodes))
@@ -285,19 +286,21 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 
 		var resultMsgs []string
 
+		// حلقه بررسی نودها و گرفتن لینک‌های احتمالی جدید
 		for i, node := range settings.Nodes {
 			targetUser := fmt.Sprintf("%s_%d", oldUsername, i+1)
 			var err error
+			var newlyCreatedLink string
 
 			if node.PanelType == "marzban" {
 				token, _ := api.GetMarzbanToken(node.URL, node.Username, node.Password)
 				if token != "" {
-					err = api.UpdateMarzbanUser(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
+					newlyCreatedLink, err = api.UpdateMarzbanUser(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
 				} else { err = fmt.Errorf("auth failed") }
 			} else {
 				token, _ := api.GetToken(node.URL, node.Username, node.Password)
 				if token != "" {
-					err = api.UpdateSubscription(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
+					newlyCreatedLink, err = api.UpdateSubscription(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
 				} else { err = fmt.Errorf("auth failed") }
 			}
 
@@ -307,8 +310,28 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			} else {
 				log.Printf("✅ User %s successfully edited & activated on node [%s]", targetUser, node.URL)
 				resultMsgs = append(resultMsgs, fmt.Sprintf("✅ نود %d موفق", i+1))
+				
+				// 🎯 اضافه کردن لینک جایزه (در صورت متولد شدن کاربر در این نود)
+				if newlyCreatedLink != "" {
+					alreadyExists := false
+					for _, u := range cleanUrls {
+						if u == newlyCreatedLink { alreadyExists = true; break }
+					}
+					if !alreadyExists {
+						cleanUrls = append(cleanUrls, newlyCreatedLink)
+					}
+				}
 			}
 		}
+
+		// 🎯 ذخیره در دیتابیس لوکال بعد از پایان عملیات شبکه (تا لینک‌های جدید ثبت شوند)
+		user.Username = newUsername
+		user.VolumeLimit = newVolumeLimit
+		user.ExpireAt = newExpireAt
+		user.URLs = cleanUrls // لیست نهایی شامل لینک‌های ترمیم شده
+		
+		database[userID] = user
+		db.SaveDB(database)
 
 		finalMsg := strings.Join(resultMsgs, " | ")
 		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)

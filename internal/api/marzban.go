@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,9 +61,7 @@ func GetPasargadGroupIDs(baseURL, token string) []int {
 						ids = append(ids, int(id))
 					}
 				}
-				if len(ids) > 0 {
-					return ids
-				}
+				if len(ids) > 0 { return ids }
 			}
 		}
 	}
@@ -71,15 +70,11 @@ func GetPasargadGroupIDs(baseURL, token string) []int {
 
 func extractSubURL(baseURL string, data map[string]interface{}) string {
 	if subURL, ok := data["subscription_url"].(string); ok && subURL != "" {
-		if strings.HasPrefix(subURL, "/") {
-			return baseURL + subURL
-		}
+		if strings.HasPrefix(subURL, "/") { return baseURL + subURL }
 		return subURL
 	}
 	if links, ok := data["links"].([]interface{}); ok && len(links) > 0 {
-		if linkStr, ok := links[0].(string); ok {
-			return linkStr
-		}
+		if linkStr, ok := links[0].(string); ok { return linkStr }
 	}
 	return ""
 }
@@ -105,9 +100,7 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 
 	if expireTimestamp > 0 {
 		payload["expire"] = expireTimestamp
-	} else {
-		payload["expire"] = nil
-	}
+	} else { payload["expire"] = nil }
 
 	jsonData, _ := json.Marshal(payload)
 	req, err := http.NewRequest("POST", baseURL+"/api/user", bytes.NewBuffer(jsonData))
@@ -121,8 +114,7 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("create failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
 	var result map[string]interface{}
@@ -143,38 +135,39 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 		if subLink != "" { return subLink, nil }
 	}
 
-	return "", fmt.Errorf("user created successfully in panel, but Sub-Merger could not extract the subscription_url")
+	return "", fmt.Errorf("user created but link extraction failed")
 }
 
-// 🎯 تابع جدید: ویرایش و روشن کردن مجدد کاربر در پاسارگاد
 func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	// ۱. خواندن اطلاعات فعلی کاربر (برای حفظ کانکشن‌ها)
 	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", baseURL, targetUser), nil)
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
 	if err != nil { return err }
-	defer respGet.Body.Close()
 
+	// 🛠️ سیستم ترمیم خودکار (Self-Healing): اگر کاربر نبود، بسازش!
 	if respGet.StatusCode != http.StatusOK {
-		return fmt.Errorf("user not found on node")
+		respGet.Body.Close()
+		log.Printf("⚠️ User %s not found on Pasargad during update. Auto-creating it now...", targetUser)
+		_, errCreate := CreateMarzbanSubscription(nodeURL, token, targetUser, nodeVolumeLimit, expireTimestamp)
+		if errCreate != nil {
+			return fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
+		}
+		return nil
 	}
 
 	var user map[string]interface{}
 	json.NewDecoder(respGet.Body).Decode(&user)
+	respGet.Body.Close()
 
-	// ۲. آپدیت مقادیر کلیدی
 	user["data_limit"] = nodeVolumeLimit
 	if expireTimestamp > 0 {
 		user["expire"] = expireTimestamp
-	} else {
-		user["expire"] = nil
-	}
-	user["status"] = "active" // روشن کردن مجدد!
+	} else { user["expire"] = nil }
+	user["status"] = "active"
 
-	// ۳. ارسال اطلاعات جدید
 	jsonData, _ := json.Marshal(user)
 	reqPut, _ := http.NewRequest("PUT", fmt.Sprintf("%s/api/user/%s", baseURL, targetUser), bytes.NewBuffer(jsonData))
 	reqPut.Header.Add("Authorization", "Bearer "+token)
@@ -185,8 +178,7 @@ func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64,
 	defer respPut.Body.Close()
 
 	if respPut.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(respPut.Body)
-		return fmt.Errorf("update failed, status: %d, response: %s", respPut.StatusCode, string(bodyBytes))
+		return fmt.Errorf("marzban update failed, status: %d", respPut.StatusCode)
 	}
 	return nil
 }

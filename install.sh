@@ -147,7 +147,7 @@ go mod tidy
 
 # دریافت درایور دیتابیس برای زبان گو
 echo -e "📥 ${C_CYAN}Fetching Go SQL Driver...${C_DEF}"
-go get -u github.com/go-sql-driver/mysql
+go get github.com/go-sql-driver/mysql@v1.8.1
 
 go build -o /usr/local/bin/sub-merger-app cmd/server/main.go
 chmod +x /usr/local/bin/sub-merger-app

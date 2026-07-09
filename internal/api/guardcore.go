@@ -89,7 +89,6 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
@@ -123,7 +122,6 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	respGet, err := client.Do(reqGet)
 	if err != nil { return err }
 
-	// 🛠️ سیستم ترمیم خودکار (Self-Healing): اگر کاربر نبود، بسازش!
 	if respGet.StatusCode != http.StatusOK {
 		respGet.Body.Close()
 		log.Printf("⚠️ User %s not found on GuardCore during update. Auto-creating it now...", targetUser)
@@ -131,7 +129,7 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 		if errCreate != nil {
 			return fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
 		}
-		return nil // با موفقیت ساخته شد، پس ارور نمی‌دهیم
+		return nil
 	}
 
 	var user map[string]interface{}

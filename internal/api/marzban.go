@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -147,7 +146,6 @@ func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64,
 	respGet, err := client.Do(reqGet)
 	if err != nil { return err }
 
-	// 🛠️ سیستم ترمیم خودکار (Self-Healing): اگر کاربر نبود، بسازش!
 	if respGet.StatusCode != http.StatusOK {
 		respGet.Body.Close()
 		log.Printf("⚠️ User %s not found on Pasargad during update. Auto-creating it now...", targetUser)

@@ -13,10 +13,14 @@
         .global-alarm { display: {{ .AlarmDisplay }}; background-color: #ef4444; color: #ffffff; padding: 12px; border-radius: 12px; font-weight: bold; margin-bottom: 20px; font-size: 14px; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
         
-        .title-container { border-bottom: 1px solid #1f2937; padding-bottom: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
+        .title-container { border-bottom: 1px solid #1f2937; padding-bottom: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         h2.custom-title { font-family: Tahoma, "Microsoft Sans Serif", sans-serif; color: #e5e7eb; margin: 0; font-size: 20px; font-weight: bold; letter-spacing: -0.5px; }
         
         .status-badge { font-size: 14px; font-weight: bold; background-color: {{ .StatusColor }}; color: #ffffff; padding: 6px 14px; border-radius: 25px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.15); letter-spacing: 0.5px; }
+
+        /* 🎯 استایل دکمه کپی لینک در داشبورد */
+        .btn-copy-main { background: #1f2937; border: 1px solid #3b82f6; color: #60a5fa; padding: 6px 14px; border-radius: 25px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s; font-family: inherit; margin-right: 5px;}
+        .btn-copy-main:hover { background: #3b82f6; color: #fff; }
 
         h3 { color: #9ca3af; font-size: 16px; text-align: right; margin: 25px 0 10px 0; border-right: 3px solid #3b82f6; padding-right: 8px; }
         .info-row { display: flex; justify-content: space-between; margin: 14px 0; padding-bottom: 8px; border-bottom: 1px dashed #1f2937; font-size: 15px; text-align: right; align-items: center; }
@@ -36,7 +40,6 @@
         
         .footer { font-size: 12px; color: #4b5563; margin-top: 25px; text-align: center; }
 
-        /* استایل اختصاصی دو دکمه وبلاگ */
         .blog-container { display: flex; gap: 10px; margin-top: 5px; margin-bottom: 15px; width: 100%; }
         .btn-blog { flex: 1; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: bold; text-align: center; text-decoration: none; border: 1px solid transparent; transition: opacity 0.2s; display: inline-block; box-sizing: border-box; }
         .btn-blog:hover { opacity: 0.8; }
@@ -50,7 +53,10 @@
         
         <div class="title-container">
             <h2 class="custom-title">وضعیت اشتراک شما:</h2>
-            <span class="status-badge">{{ .StatusText }}</span>
+            <div>
+                <span class="status-badge">{{ .StatusText }}</span>
+                <button class="btn-copy-main" onclick="copyUserLink(this)">📋 کپی لینک ساب</button>
+            </div>
         </div>
         
         <div class="global-alarm">⚠️ حجم یا زمان اشتراک شما به اتمام رسیده است!</div>
@@ -88,5 +94,30 @@
         {{ end }}
         <div class="footer">سیستم تجمیع هوشمند سابسکریپشن</div>
     </div>
+
+    <script>
+        function copyUserLink(btn) {
+            var url = window.location.href;
+            var ta = document.createElement("textarea");
+            ta.value = url;
+            ta.style.position = "fixed"; ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            
+            var oldText = btn.innerText;
+            btn.innerText = "✔️ کپی شد!";
+            btn.style.background = "#10b981";
+            btn.style.color = "#fff";
+            btn.style.borderColor = "#10b981";
+            setTimeout(() => { 
+                btn.innerText = oldText; 
+                btn.style.background = "#1f2937";
+                btn.style.color = "#60a5fa";
+                btn.style.borderColor = "#3b82f6";
+            }, 2000);
+        }
+    </script>
 </body>
 </html>

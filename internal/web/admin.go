@@ -67,7 +67,6 @@ func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
-// 🎯 ارتقای ساختار کاربر برای ارسال وضعیت به قالب
 type UserItem struct {
 	ID          string
 	User        models.User
@@ -88,13 +87,16 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 
 	for id, u := range database {
-		// 🎯 محاسبه هوشمند وضعیت اکانت بر اساس زمان انقضا
+		// 🎯 اتصال مستقیم Badge به MariaDB و موتور رادار
 		statusTxt := "🟢 Active"
 		statusCol := "#10b981" // رنگ سبز
 
-		if u.ExpireAt > 0 && u.ExpireAt < now {
-			statusTxt = "🔴 Expired"
-			statusCol = "#ef4444" // رنگ قرمز
+		if u.Status == "disabled" {
+			statusTxt = "🔴 Disabled (Limit)"
+			statusCol = "#ef4444" // رنگ قرمز برای اتمام حجم
+		} else if u.ExpireAt > 0 && u.ExpireAt < now {
+			statusTxt = "🔴 Expired (Time)"
+			statusCol = "#ef4444" // رنگ قرمز برای اتمام زمان
 		}
 
 		userList = append(userList, UserItem{
@@ -171,7 +173,6 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		r.ParseForm()
-		database, _ := db.LoadDB()
 		settings, _ := db.LoadSettings()
 		
 		username := strings.TrimSpace(r.FormValue("username"))
@@ -232,16 +233,19 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 			automaticallyGeneratedURLs = r.Form["urls"]
 		}
 
+		// 🎯 ذخیره بهینه در SQL (فقط همین کاربر ارسال می‌شود)
 		newID := generateUUID()
-		database[newID] = models.User{
-			Username:    username,
-			URLs:        automaticallyGeneratedURLs,
-			VolumeLimit: volumeLimitBytes,
-			ExpireAt:    expireTimestamp,
-			CreatedAt:   time.Now().Unix(),
+		newUser := map[string]models.User{
+			newID: {
+				Username:    username,
+				URLs:        automaticallyGeneratedURLs,
+				VolumeLimit: volumeLimitBytes,
+				ExpireAt:    expireTimestamp,
+				CreatedAt:   time.Now().Unix(),
+				Status:      "active",
+			},
 		}
-
-		db.SaveDB(database)
+		db.SaveDB(newUser)
 
 		finalMsg := strings.Join(resultMsgs, " | ")
 		if finalMsg == "" { finalMsg = "✅ عملیات ساخت با موفقیت انجام شد" }
@@ -340,13 +344,14 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// 🎯 ذخیره در SQL: اکتیو کردن مجدد کاربر در دیتابیس لوکال
 		user.Username = newUsername
 		user.VolumeLimit = newVolumeLimit
 		user.ExpireAt = newExpireAt
 		user.URLs = cleanUrls
+		user.Status = "active" // روشن کردن مجدد از نظر رادار دیتابیس
 		
-		database[userID] = user
-		db.SaveDB(database)
+		db.SaveDB(map[string]models.User{userID: user}) // ارسال تک‌رکورد به MariaDB
 
 		finalMsg := strings.Join(resultMsgs, " | ")
 		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)
@@ -372,12 +377,7 @@ func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := r.PathValue("id")
-	database, _ := db.LoadDB()
-	
-	if _, exists := database[userID]; exists {
-		delete(database, userID)
-		db.SaveDB(database)
-	}
+	db.DeleteUserDB(userID) // 🎯 اجرای مستقیم کوئری DELETE روی دیتابیس MariaDB
 	
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
@@ -390,6 +390,7 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 	database, _ := db.LoadDB()
 	w.Header().Set("Content-Disposition", "attachment; filename=sub_merger_backup.json")
 	w.Header().Set("Content-Type", "application/json")
+	// خروجی استاندارد JSON برای سادگی دانلود پنل وب (همچنان کار می‌کند!)
 	json.NewEncoder(w).Encode(database)
 }
 
@@ -404,7 +405,7 @@ func handleRestore(w http.ResponseWriter, r *http.Request) {
 			defer file.Close()
 			var database map[string]models.User
 			if err := json.NewDecoder(file).Decode(&database); err == nil {
-				db.SaveDB(database)
+				db.SaveDB(database) // موتور هوشمند MariaDB به صورت خودکار تمام رکوردها را Upsert می‌کند
 			}
 		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)

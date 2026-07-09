@@ -137,23 +137,24 @@ func CreateMarzbanSubscription(nodeURL, token, username string, nodeVolumeLimit 
 	return "", fmt.Errorf("user created but link extraction failed")
 }
 
-func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
+// 🎯 تغییر مهم: خروجی به (string, error) تبدیل شد
+func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", baseURL, targetUser), nil)
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
-	if err != nil { return err }
+	if err != nil { return "", err }
 
 	if respGet.StatusCode != http.StatusOK {
 		respGet.Body.Close()
 		log.Printf("⚠️ User %s not found on Pasargad during update. Auto-creating it now...", targetUser)
-		_, errCreate := CreateMarzbanSubscription(nodeURL, token, targetUser, nodeVolumeLimit, expireTimestamp)
+		newLink, errCreate := CreateMarzbanSubscription(nodeURL, token, targetUser, nodeVolumeLimit, expireTimestamp)
 		if errCreate != nil {
-			return fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
+			return "", fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
 		}
-		return nil
+		return newLink, nil // 🎯 برگرداندن لینک ساخته شده!
 	}
 
 	var user map[string]interface{}
@@ -172,13 +173,13 @@ func UpdateMarzbanUser(nodeURL, token, targetUser string, nodeVolumeLimit int64,
 	reqPut.Header.Add("Content-Type", "application/json")
 
 	respPut, err := client.Do(reqPut)
-	if err != nil { return err }
+	if err != nil { return "", err }
 	defer respPut.Body.Close()
 
 	if respPut.StatusCode != http.StatusOK {
-		return fmt.Errorf("marzban update failed, status: %d", respPut.StatusCode)
+		return "", fmt.Errorf("marzban update failed, status: %d", respPut.StatusCode)
 	}
-	return nil
+	return "", nil
 }
 
 func GetMarzbanUserUsage(nodeURL, token, targetUser string) (int64, error) {

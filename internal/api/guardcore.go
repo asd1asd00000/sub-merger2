@@ -113,23 +113,24 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 	return "", fmt.Errorf("could not extract subscription link properties")
 }
 
-func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
+// 🎯 تغییر مهم: اضافه شدن خروجی string برای برگرداندن لینک جدید در صورت ساخت
+func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) (string, error) {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	reqGet, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/subscriptions/%s", baseURL, targetUser), nil)
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
-	if err != nil { return err }
+	if err != nil { return "", err }
 
 	if respGet.StatusCode != http.StatusOK {
 		respGet.Body.Close()
 		log.Printf("⚠️ User %s not found on GuardCore during update. Auto-creating it now...", targetUser)
-		_, errCreate := CreateSubscription(nodeURL, token, targetUser, nodeVolumeLimit, expireTimestamp)
+		newLink, errCreate := CreateSubscription(nodeURL, token, targetUser, nodeVolumeLimit, expireTimestamp)
 		if errCreate != nil {
-			return fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
+			return "", fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
 		}
-		return nil
+		return newLink, nil // 🎯 برگرداندن لینک ساخته شده!
 	}
 
 	var user map[string]interface{}
@@ -153,11 +154,11 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	reqPut.Header.Add("Content-Type", "application/json")
 
 	respPut, err := client.Do(reqPut)
-	if err != nil { return err }
+	if err != nil { return "", err }
 	defer respPut.Body.Close()
 
 	if respPut.StatusCode != http.StatusOK {
-		return fmt.Errorf("guardcore update failed, status: %d", respPut.StatusCode)
+		return "", fmt.Errorf("guardcore update failed, status: %d", respPut.StatusCode)
 	}
 
 	enablePayload := map[string][]string{"usernames": {targetUser}}
@@ -168,7 +169,7 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	respEnable, err := client.Do(reqEnable)
 	if err == nil { respEnable.Body.Close() }
 
-	return nil
+	return "", nil // در حالت عادی آپدیت شد و لینک جدیدی نداریم
 }
 
 func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {

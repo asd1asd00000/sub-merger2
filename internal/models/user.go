@@ -4,7 +4,7 @@ type Node struct {
 	URL       string `json:"url"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
-	PanelType string `json:"panel_type"` // نوع پنل: guardcore یا marzban
+	PanelType string `json:"panel_type"`
 }
 
 type User struct {
@@ -14,6 +14,7 @@ type User struct {
 	LastActive  int64    `json:"last_active"`
 	VolumeLimit int64    `json:"volume_limit"`
 	ExpireAt    int64    `json:"expire_at"`
+	Status      string   `json:"status"` // 🎯 فیلد جدید برای دیتابیس (active/disabled)
 }
 
 type SystemSettings struct {

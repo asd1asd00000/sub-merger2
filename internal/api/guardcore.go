@@ -90,7 +90,6 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("❌ GuardCore API Error on [%s]: %s\n", nodeURL, string(bodyBytes))
 		return "", fmt.Errorf("create failed, status: %d", resp.StatusCode)
 	}
 
@@ -105,20 +104,16 @@ func CreateSubscription(nodeURL, token, username string, nodeVolumeLimit int64, 
 	}
 
 	if firstResult != nil {
-		if link, ok := firstResult["link"].(string); ok && link != "" {
-			return link, nil
-		}
+		if link, ok := firstResult["link"].(string); ok && link != "" { return link, nil }
 		secret, _ := firstResult["secret"].(string)
 		tag, _ := firstResult["tag"].(string)
 		if secret != "" && tag != "" {
 			return fmt.Sprintf("%s/%s/%s", strings.TrimRight(nodeURL, "/"), tag, secret), nil
 		}
 	}
-
 	return "", fmt.Errorf("could not extract subscription link properties")
 }
 
-// 🎯 تابع ارتقا یافته دقیقاً بر اساس مستندات ارسالی شما
 func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64, expireTimestamp int64) error {
 	baseURL := strings.TrimRight(nodeURL, "/")
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -127,22 +122,27 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	reqGet.Header.Add("Authorization", "Bearer "+token)
 	respGet, err := client.Do(reqGet)
 	if err != nil { return err }
-	defer respGet.Body.Close()
 
+	// 🛠️ سیستم ترمیم خودکار (Self-Healing): اگر کاربر نبود، بسازش!
 	if respGet.StatusCode != http.StatusOK {
-		return fmt.Errorf("user not found on guardcore node")
+		respGet.Body.Close()
+		log.Printf("⚠️ User %s not found on GuardCore during update. Auto-creating it now...", targetUser)
+		_, errCreate := CreateSubscription(nodeURL, token, targetUser, nodeVolumeLimit, expireTimestamp)
+		if errCreate != nil {
+			return fmt.Errorf("user not found, and auto-creation failed: %v", errCreate)
+		}
+		return nil // با موفقیت ساخته شد، پس ارور نمی‌دهیم
 	}
 
 	var user map[string]interface{}
 	json.NewDecoder(respGet.Body).Decode(&user)
+	respGet.Body.Close()
 
-	// 🧹 ساخت پکیج دقیقاً مطابق با بخش Request body مستندات گاردکور
 	cleanPayload := map[string]interface{}{
 		"limit_usage":  nodeVolumeLimit,
 		"limit_expire": expireTimestamp,
 	}
 
-	// استخراج service_ids بر اساس مستندات
 	if sIDs, ok := user["service_ids"]; ok {
 		cleanPayload["service_ids"] = sIDs
 	} else if sID, ok := user["service_id"]; ok {
@@ -159,22 +159,16 @@ func UpdateSubscription(nodeURL, token, targetUser string, nodeVolumeLimit int64
 	defer respPut.Body.Close()
 
 	if respPut.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(respPut.Body)
-		return fmt.Errorf("guardcore update failed, status: %d, response: %s", respPut.StatusCode, string(bodyBytes))
+		return fmt.Errorf("guardcore update failed, status: %d", respPut.StatusCode)
 	}
 
-	// 🎯 شلیک دوم برای فعال‌سازی (چون در مستندات بالا، PUT این کار را نمی‌کرد)
-	enablePayload := map[string][]string{
-		"usernames": {targetUser},
-	}
+	enablePayload := map[string][]string{"usernames": {targetUser}}
 	enableData, _ := json.Marshal(enablePayload)
 	reqEnable, _ := http.NewRequest("POST", baseURL+"/api/subscriptions/enable", bytes.NewBuffer(enableData))
 	reqEnable.Header.Add("Authorization", "Bearer "+token)
 	reqEnable.Header.Add("Content-Type", "application/json")
 	respEnable, err := client.Do(reqEnable)
-	if err == nil {
-		respEnable.Body.Close()
-	}
+	if err == nil { respEnable.Body.Close() }
 
 	return nil
 }
@@ -196,14 +190,11 @@ func GetUserUsage(nodeURL, token, targetUser string) (int64, error) {
 	} else if total, ok := result["total_usage"].(float64); ok {
 		return int64(total), nil
 	}
-	
 	return 0, fmt.Errorf("could not find usage data")
 }
 
 func DisableSubscriptions(nodeURL, token string, usernames []string) error {
-	payload := map[string][]string{
-		"usernames": usernames,
-	}
+	payload := map[string][]string{"usernames": usernames}
 	jsonData, _ := json.Marshal(payload)
 
 	req, err := http.NewRequest("POST", nodeURL+"/api/subscriptions/disable", bytes.NewBuffer(jsonData))
@@ -217,6 +208,5 @@ func DisableSubscriptions(nodeURL, token string, usernames []string) error {
 	if err != nil { return err }
 	defer resp.Body.Close()
 
-	log.Printf("🛡️ Sent Bulk Disable (Kill-Switch) for users %v to node [%s] - Status: %d", usernames, nodeURL, resp.StatusCode)
 	return nil
 }

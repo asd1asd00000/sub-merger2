@@ -12,7 +12,7 @@
         .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2937; padding-bottom: 15px; margin-bottom: 20px; }
         h2 { color: #3b82f6; margin: 0; font-size: 22px; }
         
-        /* استایل پیام‌های موفقیت و خطا */
+        /* استایل پیام پاپ‌آپ (Toast) */
         .toast-alert { background: #1f2937; border-left: 4px solid #10b981; color: #fff; padding: 15px 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 15px; animation: slideDown 0.3s ease-out; }
         .toast-alert.has-error { border-left-color: #ef4444; }
         .toast-alert button { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 18px; padding: 0; }
@@ -25,6 +25,7 @@
         .btn-edit { background: #f59e0b; color: #fff; margin-right: 5px; }
         .btn-delete { background: #ef4444; color: #fff; }
         .btn-dash { background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-copy-sub { background: #4f46e5; color: #fff; margin-right: 5px; }
         
         .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .btn-add { background: #3b82f6; color: white; padding: 10px 15px; font-size: 14px; }
@@ -34,7 +35,7 @@
         
         /* Modal Styles */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; backdrop-filter: blur(4px); }
-        .modal-content { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 480px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; animation: scaleIn 0.2s ease-out; }
+        .modal-content { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 15px; width: 100%; max-width: 580px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; animation: scaleIn 0.2s ease-out; }
         @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         
         .modal h3 { margin-top: 0; color: #3b82f6; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
@@ -66,7 +67,7 @@
         .page-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
 
         .tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid #374151; margin-bottom: 20px; gap: 4px; }
-        .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; min-width: 80px; }
+        .tab-btn { background: #1f2937; border: 1px solid #374151; border-bottom: none; color: #9ca3af; padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: bold; border-radius: 8px 8px 0 0; transition: all 0.2s; flex: 1; text-align: center; min-width: 70px; }
         .tab-btn:hover { color: #fff; background: #2d3748; }
         .tab-btn.active { color: #fff; background: #3b82f6; border-color: #3b82f6; }
         .tab-content { display: none; animation: fadeIn 0.3s; }
@@ -82,23 +83,10 @@
                 <a href="/admin/logout" class="btn btn-logout">Logout</a>
             </div>
             
-            {{ if .AlertMessage }}
-            <div id="toastAlert" class="toast-alert">
-                <span id="toastText">{{ .AlertMessage }}</span>
+            <div id="toastAlert" class="toast-alert" style="display: none;">
+                <span id="toastText"></span>
                 <button onclick="document.getElementById('toastAlert').style.display='none'">✖</button>
             </div>
-            <script>
-                // اگر در متن پیام علامت ❌ وجود داشت، رنگ باکس را قرمز کن
-                if (document.getElementById('toastText').innerText.includes('❌')) {
-                    document.getElementById('toastAlert').classList.add('has-error');
-                }
-                // مخفی کردن اتوماتیک پیام بعد از ۶ ثانیه
-                setTimeout(function() {
-                    var t = document.getElementById('toastAlert');
-                    if(t) t.style.display = 'none';
-                }, 6000);
-            </script>
-            {{ end }}
             
             <div class="action-buttons">
                 <a href="/admin/add" class="btn btn-add">➕ Add New User</a>
@@ -129,8 +117,8 @@
                         <th width="5%">#</th>
                         <th width="30%">Username</th>
                         <th width="20%" id="sortLastActive" class="sortable" title="Click to sort by date">Last Active ↕️</th>
-                        <th width="25%">Actions</th>
-                        <th width="20%" class="text-center">Dashboard</th>
+                        <th width="20%">Actions</th>
+                        <th width="25%" class="text-center">Dashboard</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -141,9 +129,10 @@
                         <td class="last-active" data-timestamp="{{ .User.LastActive }}">Loading...</td>
                         <td>
                             <a href="/admin/edit/{{ .ID }}" class="btn btn-edit">Edit</a>
-                            <button type="button" class="btn btn-delete" onclick="openDeleteModal('/admin/delete/{{ .ID }}', '{{ .User.Username }}')">Delete</button>
+                            <button type="button" class="btn btn-delete" onclick="openDeleteModal('/admin/delete/{{ .ID }}', '{{ .User.Username }}')">Del</button>
                         </td>
                         <td class="text-center">
+                            <button class="btn btn-copy-sub" onclick="copyQuickSub('https://{{ $.Host }}/sub/{{ .ID }}', this)">📋 Copy</button>
                             <a href="/sub/{{ .ID }}" target="_blank" class="btn btn-dash">🔗 View</a>
                         </td>
                     </tr>
@@ -182,7 +171,8 @@
                     <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-telegram')">Telegram</button>
                     <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-email')">Gmail</button>
                     <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-links')">Links</button>
-                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-nodes')" style="background: #27303f; color: #fff; border: 1px solid #4b5563;">Master Nodes</button>
+                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-nodes')" style="background: #27303f; color: #fff;">Nodes</button>
+                    <button type="button" class="tab-btn" onclick="switchTab(event, 'tab-logs')" style="background: #ef4444; color: #fff;">Logs</button>
                 </div>
 
                 <div id="tab-general" class="tab-content active">
@@ -196,34 +186,26 @@
                     <h4>Global Auto-Backup</h4>
                     <label>Backup Interval (Hours):</label>
                     <input type="number" name="backup_interval" value="{{ .Settings.BackupInterval }}" min="1" max="168" required>
-                    <p style="font-size: 12px; color: #9ca3af; margin-top: 5px;">Example: 1 for every hour, 24 for once a day.</p>
                 </div>
 
                 <div id="tab-telegram" class="tab-content">
                     <h4>Telegram Auto-Backup</h4>
                     <label>Bot Token:</label>
                     <input type="text" name="telegram_token" value="{{ .Settings.TelegramToken }}" placeholder="123456789:ABCDef...">
-                    
                     <label>Chat ID:</label>
                     <input type="text" name="telegram_chat_id" value="{{ .Settings.TelegramChatID }}" placeholder="12345678">
-                    
                     <label>Telegram ZIP Password:</label>
                     <input type="text" name="telegram_password" value="{{ .Settings.TelegramPassword }}" placeholder="MySecret123!">
                 </div>
 
                 <div id="tab-email" class="tab-content">
                     <h4>Gmail Auto-Backup (SMTP)</h4>
-                    <p style="font-size: 12px; color: #9ca3af; margin-top: 0; text-align: left;">💡 Note: Use a dedicated Google App Password.</p>
-                    
                     <label>Sender Gmail (Your Email):</label>
                     <input type="text" name="smtp_email" value="{{ .Settings.SmtpEmail }}" placeholder="your-email@gmail.com">
-                    
                     <label>App Password (16-chars):</label>
                     <input type="password" name="smtp_password" value="{{ .Settings.SmtpPassword }}" placeholder="abcd efgh ijkl mnop">
-                    
                     <label>Receiver Email:</label>
                     <input type="text" name="smtp_receiver" value="{{ .Settings.SmtpReceiver }}" placeholder="backup-receiver@domain.com">
-                    
                     <label>Gmail ZIP Password:</label>
                     <input type="text" name="smtp_zip_password" value="{{ .Settings.SmtpZipPassword }}" placeholder="MySecretEmailPass!">
                 </div>
@@ -232,21 +214,13 @@
                     <h4>Blog & Support Links</h4>
                     <label>Tutorials URL:</label>
                     <input type="text" name="tutorials_url" value="{{ .Settings.TutorialsURL }}" placeholder="https://t.me/your_channel">
-                    
                     <label>Announcements URL:</label>
                     <input type="text" name="announcements_url" value="{{ .Settings.AnnouncementsURL }}" placeholder="https://t.me/your_news">
                 </div>
 
                 <div id="tab-nodes" class="tab-content">
                     <h4>Central Master Nodes</h4>
-                    <p style="font-size: 12px; color: #9ca3af; margin-top: 0;">Select your panel type and configure the API endpoints.</p>
-                    
-                    <label style="color: #60a5fa; margin-top: 15px;">
-                        Node 1 (Primary Panel): 
-                        <span style="float: right; font-weight: bold; font-size: 12px;">
-                            {{ if gt (len .Settings.Nodes) 0 }}{{ index $.NodeStatus (index $.Settings.Nodes 0).URL }}{{ end }}
-                        </span>
-                    </label>
+                    <label style="color: #60a5fa;">Node 1 (Primary): <span style="float: right; font-size: 12px;">{{ if gt (len .Settings.Nodes) 0 }}{{ index $.NodeStatus (index $.Settings.Nodes 0).URL }}{{ end }}</span></label>
                     <div style="display: flex; gap: 10px; margin-bottom: 5px;">
                         <select name="node_type_1" style="width: 35%;">
                             <option value="guardcore" {{ if gt (len .Settings.Nodes) 0 }}{{ if eq (index .Settings.Nodes 0).PanelType "guardcore" }}selected{{ end }}{{ end }}>GuardCore</option>
@@ -257,12 +231,7 @@
                     <input type="text" name="node_user_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
                     <input type="password" name="node_pass_1" value="{{ if gt (len .Settings.Nodes) 0 }}{{ (index .Settings.Nodes 0).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
                     
-                    <label style="color: #60a5fa; margin-top: 20px;">
-                        Node 2 (Optional): 
-                        <span style="float: right; font-weight: bold; font-size: 12px;">
-                            {{ if gt (len .Settings.Nodes) 1 }}{{ index $.NodeStatus (index $.Settings.Nodes 1).URL }}{{ end }}
-                        </span>
-                    </label>
+                    <label style="color: #60a5fa; margin-top: 20px;">Node 2: <span style="float: right; font-size: 12px;">{{ if gt (len .Settings.Nodes) 1 }}{{ index $.NodeStatus (index $.Settings.Nodes 1).URL }}{{ end }}</span></label>
                     <div style="display: flex; gap: 10px; margin-bottom: 5px;">
                         <select name="node_type_2" style="width: 35%;">
                             <option value="guardcore" {{ if gt (len .Settings.Nodes) 1 }}{{ if eq (index .Settings.Nodes 1).PanelType "guardcore" }}selected{{ end }}{{ end }}>GuardCore</option>
@@ -272,36 +241,63 @@
                     </div>
                     <input type="text" name="node_user_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
                     <input type="password" name="node_pass_2" value="{{ if gt (len .Settings.Nodes) 1 }}{{ (index .Settings.Nodes 1).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
+                </div>
 
-                    <label style="color: #60a5fa; margin-top: 20px;">
-                        Node 3 (Optional): 
-                        <span style="float: right; font-weight: bold; font-size: 12px;">
-                            {{ if gt (len .Settings.Nodes) 2 }}{{ index $.NodeStatus (index $.Settings.Nodes 2).URL }}{{ end }}
-                        </span>
-                    </label>
-                    <div style="display: flex; gap: 10px; margin-bottom: 5px;">
-                        <select name="node_type_3" style="width: 35%;">
-                            <option value="guardcore" {{ if gt (len .Settings.Nodes) 2 }}{{ if eq (index .Settings.Nodes 2).PanelType "guardcore" }}selected{{ end }}{{ end }}>GuardCore</option>
-                            <option value="marzban" {{ if gt (len .Settings.Nodes) 2 }}{{ if eq (index .Settings.Nodes 2).PanelType "marzban" }}selected{{ end }}{{ end }}>Pasargad / Marzban</option>
-                        </select>
-                        <input type="text" name="node_url_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).URL }}{{ end }}" placeholder="https://panel3.com" style="width: 65%; margin: 0;">
-                    </div>
-                    <input type="text" name="node_user_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).Username }}{{ end }}" placeholder="Admin Username" style="margin-top:5px;">
-                    <input type="password" name="node_pass_3" value="{{ if gt (len .Settings.Nodes) 2 }}{{ (index .Settings.Nodes 2).Password }}{{ end }}" placeholder="Admin Password" style="margin-top:5px;">
+                <div id="tab-logs" class="tab-content">
+                    <h4>Terminal Logs (Last 40 Lines)</h4>
+                    <pre style="background: #000; color: #10b981; padding: 10px; border-radius: 8px; height: 260px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; font-family: monospace; border: 1px solid #374151;">{{ .Logs }}</pre>
                 </div>
                 
                 <div style="display: flex; gap: 10px; margin-top: 25px;">
                     <button type="submit" class="btn btn-add" style="flex: 1; padding: 10px;">Save Settings</button>
-                    <button type="button" class="btn btn-logout" style="flex: 1; padding: 10px;" onclick="closeModal()">Cancel</button>
+                    <button type="button" class="btn btn-logout" style="flex: 1; padding: 10px;" onclick="closeModal()">Close</button>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
+        // 🎯 سیستم هوشمند خواندن پیام و حذف آن از آدرس‌بار
+        document.addEventListener("DOMContentLoaded", function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const msg = urlParams.get('msg');
+            if (msg) {
+                const toast = document.getElementById('toastAlert');
+                const toastText = document.getElementById('toastText');
+                toastText.innerText = msg;
+                if (msg.includes('❌')) { toast.classList.add('has-error'); }
+                toast.style.display = 'flex';
+                
+                // پاک کردن تمیز URL بدون رفرش صفحه
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+                
+                // مخفی کردن پاپ‌آپ بعد از 2.5 ثانیه
+                setTimeout(() => { toast.style.display = 'none'; }, 2500);
+            }
+        });
+
+        // 🎯 سیستم کپی سریع برای ادمین
+        function copyQuickSub(text, btnElem) {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed"; ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            
+            var originalText = btnElem.innerText;
+            btnElem.innerText = "✔️ Copied!";
+            btnElem.style.background = "#10b981";
+            setTimeout(() => { 
+                btnElem.innerText = originalText; 
+                btnElem.style.background = "#4f46e5";
+            }, 2000);
+        }
+
         function openModal() { document.getElementById('settingsModal').style.display = 'flex'; }
         function closeModal() { document.getElementById('settingsModal').style.display = 'none'; }
-        
         function openDeleteModal(deleteUrl, username) {
             document.getElementById('deleteUserName').innerText = username;
             document.getElementById('confirmDeleteBtn').href = deleteUrl;

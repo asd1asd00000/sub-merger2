@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,7 +107,13 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	alertMsg := r.URL.Query().Get("msg")
+	// 🎯 خواندن زنده ۴۰ خط آخر لاگ‌های سیستم
+	logCmd := exec.Command("journalctl", "-u", "sub-merger", "-n", "40", "--no-pager")
+	logOut, err := logCmd.Output()
+	logsStr := string(logOut)
+	if err != nil || logsStr == "" {
+		logsStr = "No logs available or no permission to read journalctl."
+	}
 
 	tmpl, err := template.ParseFiles("templates/admin.html")
 	if err != nil {
@@ -115,17 +122,17 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	data := struct {
-		Users        []UserItem
-		Host         string
-		Settings     models.SystemSettings
-		NodeStatus   map[string]string
-		AlertMessage string
+		Users      []UserItem
+		Host       string
+		Settings   models.SystemSettings
+		NodeStatus map[string]string
+		Logs       string // ارسال لاگ به قالب
 	}{
-		Users:        userList,
-		Host:         r.Host,
-		Settings:     settings,
-		NodeStatus:   nodeStatus,
-		AlertMessage: alertMsg,
+		Users:      userList,
+		Host:       r.Host,
+		Settings:   settings,
+		NodeStatus: nodeStatus,
+		Logs:       logsStr,
 	}
 	
 	err = tmpl.Execute(w, data)
@@ -167,7 +174,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 		nodeVolumeLimit := volumeLimitBytes * numNodes
 
 		var automaticallyGeneratedURLs []string
-		var resultMsgs []string // 🎯 متغیر جدید برای جمع‌آوری پیام‌های نتیجه ساخت کاربر
+		var resultMsgs []string 
 
 		for i, node := range settings.Nodes {
 			var token, subLink string
@@ -186,7 +193,6 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// بررسی نتایج و ثبت پیام برای داشبورد
 			if err != nil {
 				log.Printf("❌ Failed processing Node %d [%s]: %v", i+1, node.URL, err)
 				resultMsgs = append(resultMsgs, fmt.Sprintf("❌ نود %d خطا", i+1))
@@ -215,11 +221,8 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 		db.SaveDB(database)
 
-		// 🎯 چسباندن نتایج ساخت و ارسال به صفحه اصلی
 		finalMsg := strings.Join(resultMsgs, " | ")
-		if finalMsg == "" {
-			finalMsg = "✅ عملیات ساخت با موفقیت انجام شد"
-		}
+		if finalMsg == "" { finalMsg = "✅ عملیات ساخت با موفقیت انجام شد" }
 		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)
 		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 		return
@@ -249,9 +252,7 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		
 		newUsername := strings.TrimSpace(r.FormValue("username"))
-		if newUsername == "" {
-			newUsername = user.Username
-		}
+		if newUsername == "" { newUsername = user.Username }
 		
 		volStr := strings.TrimSpace(r.FormValue("volume_limit"))
 		volStr = strings.ReplaceAll(volStr, ",", ".")
@@ -265,9 +266,7 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 		}
 
 		urls := r.Form["urls"]
-		if len(urls) == 0 {
-			urls = user.URLs
-		}
+		if len(urls) == 0 { urls = user.URLs }
 
 		oldUsername := user.Username
 		
@@ -294,16 +293,12 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 				token, _ := api.GetMarzbanToken(node.URL, node.Username, node.Password)
 				if token != "" {
 					err = api.UpdateMarzbanUser(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
-				} else {
-					err = fmt.Errorf("auth failed")
-				}
+				} else { err = fmt.Errorf("auth failed") }
 			} else {
 				token, _ := api.GetToken(node.URL, node.Username, node.Password)
 				if token != "" {
 					err = api.UpdateSubscription(node.URL, token, targetUser, nodeVolumeLimit, newExpireAt)
-				} else {
-					err = fmt.Errorf("auth failed")
-				}
+				} else { err = fmt.Errorf("auth failed") }
 			}
 
 			if err != nil {

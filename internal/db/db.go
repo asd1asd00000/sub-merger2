@@ -272,7 +272,7 @@ func StartNodeMonitoring() {
 	}()
 }
 
-// بکاپ‌گیری از SQL با استفاده از mysqldump
+// 🎯 بکاپ‌گیری از SQL با استفاده از mysqldump و ترکیب آن با فایل تنظیمات در فایل زیپ
 func dumpSQLDatabase(zipPath string, zipPass string) error {
 	passBytes, _ := os.ReadFile(DBSecretFile)
 	dbPass := strings.TrimSpace(string(passBytes))
@@ -285,7 +285,8 @@ func dumpSQLDatabase(zipPath string, zipPass string) error {
 	cmd.Run()
 	outfile.Close()
 
-	zipCmd := exec.Command("zip", "-j", "-P", zipPass, zipPath, sqlFile)
+	// 🎯 فایل settings.json هم حالا به فایل بکاپ افزوده شد!
+	zipCmd := exec.Command("zip", "-j", "-P", zipPass, zipPath, sqlFile, SettingsFile)
 	err = zipCmd.Run()
 	os.Remove(sqlFile) // پاک کردن فایل SQL بعد از زیپ شدن
 	return err
@@ -385,7 +386,7 @@ func sendToEmail() {
 
 	body.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	body.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-	body.WriteString("✅ فایل بکاپ خودکار دیتابیس MariaDB (SQL) پیوست گردید.\n\n")
+	body.WriteString("✅ فایل بکاپ خودکار دیتابیس MariaDB (SQL) و فایل Settings پیوست گردید.\n\n")
 
 	body.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	body.WriteString("Content-Type: application/zip; name=\"backup.zip\"\r\n")

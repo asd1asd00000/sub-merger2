@@ -88,13 +88,15 @@
             
             <div class="action-buttons">
                 <a href="/admin/add" class="btn btn-add">➕ Add New User</a>
-                <a href="/admin/backup" class="btn btn-backup">💾 Backup JSON</a>
-                <button onclick="document.getElementById('restoreFile').click()" class="btn btn-restore">📂 Restore JSON</button>
+                <!-- 🎯 دکمه‌های جدید بکاپ با فرمت ZIP -->
+                <a href="/admin/backup" class="btn btn-backup">💾 Full Backup (.zip)</a>
+                <button onclick="document.getElementById('restoreFile').click()" class="btn btn-restore">📂 Restore (.zip)</button>
                 <button onclick="openModal()" class="btn btn-settings">⚙️ Settings</button>
             </div>
             
             <form id="restoreForm" action="/admin/restore" method="POST" enctype="multipart/form-data" style="display: none;">
-                <input type="file" id="restoreFile" name="backup_file" accept=".json" onchange="document.getElementById('restoreForm').submit()">
+                <!-- 🎯 پذیرش فرمت زیپ در بخش آپلود -->
+                <input type="file" id="restoreFile" name="backup_file" accept=".zip" onchange="document.getElementById('restoreForm').submit()">
             </form>
             
             <div class="table-controls">
@@ -147,6 +149,7 @@
         </div>
     </div>
 
+    <!-- Custom Delete Confirmation Modal -->
     <div id="deleteModal" class="modal">
         <div class="modal-content">
             <h3>⚠️ Confirm Deletion</h3>
@@ -161,6 +164,7 @@
         </div>
     </div>
 
+    <!-- System Settings Modal -->
     <div id="settingsModal" class="modal">
         <div class="modal-content">
             <h3>⚙️ System Settings</h3>

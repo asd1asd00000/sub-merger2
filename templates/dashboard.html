@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>وضعیت اشتراک سابسکریپشن</title>
     <link rel="icon" type="image/png" href="/favicon.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: {{ .CardBG }}; border-radius: 20px; padding: 30px; width: 100%; max-width: 440px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); border: 1px solid #374151; text-align: center; }
@@ -18,10 +19,6 @@
         
         .status-badge { font-size: 14px; font-weight: bold; background-color: {{ .StatusColor }}; color: #ffffff; padding: 6px 14px; border-radius: 25px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.15); letter-spacing: 0.5px; }
 
-        /* 🎯 استایل دکمه کپی لینک در داشبورد */
-        .btn-copy-main { background: #1f2937; border: 1px solid #3b82f6; color: #60a5fa; padding: 6px 14px; border-radius: 25px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s; font-family: inherit; margin-right: 5px;}
-        .btn-copy-main:hover { background: #3b82f6; color: #fff; }
-
         h3 { color: #9ca3af; font-size: 16px; text-align: right; margin: 25px 0 10px 0; border-right: 3px solid #3b82f6; padding-right: 8px; }
         .info-row { display: flex; justify-content: space-between; margin: 14px 0; padding-bottom: 8px; border-bottom: 1px dashed #1f2937; font-size: 15px; text-align: right; align-items: center; }
         .label { color: #9ca3af; }
@@ -31,6 +28,17 @@
         .progress-bar { background: linear-gradient(90deg, #3b82f6, #10b981); height: 100%; width: {{ .Percent }}%; border-radius: 50px; }
         .percent-text { font-size: 13px; color: #9ca3af; margin-bottom: 20px; text-align: center; }
         
+        /* 🎯 استایل‌های جدید برای چیدمان شبکه‌ای دکمه‌ها */
+        .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px; margin-bottom: 20px; width: 100%; }
+        .btn-action { padding: 12px; border-radius: 12px; font-size: 13px; font-weight: bold; text-align: center; text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: all 0.2s; box-sizing: border-box; font-family: inherit; color: #fff; }
+        .btn-action:hover { opacity: 0.8; transform: translateY(-2px); }
+        
+        /* رنگ‌بندی اختصاصی هر دکمه */
+        .btn-copy { background: #1e293b; border-color: #3b82f6; color: #60a5fa; }
+        .btn-qr { background: #1e293b; border-color: #8b5cf6; color: #a78bfa; }
+        .btn-tutorials { background: #111827; border-color: #38bdf8; color: #38bdf8; }
+        .btn-news { background: #111827; border-color: #f43f5e; color: #f43f5e; }
+
         .sub-panel { padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #2d3748; text-align: right; }
         .panel-title { font-size: 15px; font-weight: bold; color: #60a5fa; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
         .panel-row { display: flex; justify-content: space-between; font-size: 13px; color: #cbd5e1; margin: 4px 0; }
@@ -40,11 +48,12 @@
         
         .footer { font-size: 12px; color: #4b5563; margin-top: 25px; text-align: center; }
 
-        .blog-container { display: flex; gap: 10px; margin-top: 5px; margin-bottom: 15px; width: 100%; }
-        .btn-blog { flex: 1; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: bold; text-align: center; text-decoration: none; border: 1px solid transparent; transition: opacity 0.2s; display: inline-block; box-sizing: border-box; }
-        .btn-blog:hover { opacity: 0.8; }
-        .btn-tutorials { background: #111827; color: #38bdf8; border-color: #38bdf8; }
-        .btn-news { background: #111827; color: #f43f5e; border-color: #f43f5e; }
+        /* 🎯 استایل پاپ‌آپ (Modal) برای نمایش QR Code */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: #111827; border: 1px solid #374151; padding: 25px; border-radius: 20px; width: 90%; max-width: 300px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); text-align: center; animation: scaleIn 0.2s ease-out; }
+        @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        #qrcode-container { display: flex; justify-content: center; background: #ffffff; padding: 15px; border-radius: 12px; margin: 20px 0; }
     </style>
 </head>
 <body>
@@ -55,7 +64,6 @@
             <h2 class="custom-title">وضعیت اشتراک شما:</h2>
             <div>
                 <span class="status-badge">{{ .StatusText }}</span>
-                <button class="btn-copy-main" onclick="copyUserLink(this)">📋 کپی لینک ساب</button>
             </div>
         </div>
         
@@ -69,9 +77,11 @@
         <div class="progress-box"><div class="progress-bar"></div></div>
         <div class="percent-text">شما {{ .Percent }}٪ از حجم کل را مصرف کرده‌اید.</div>
         
-        <div class="blog-container">
-            <a href="{{ .TutorialsURL }}" target="_blank" class="btn-blog btn-tutorials">📚 آموزش‌ها</a>
-            <a href="{{ .AnnouncementsURL }}" target="_blank" class="btn-blog btn-news">📢 اطلاعیه‌های مهم</a>
+        <div class="action-grid">
+            <button class="btn-action btn-copy" onclick="copyUserLink(this)">📋 کپی لینک ساب</button>
+            <button class="btn-action btn-qr" onclick="openQRModal()">📱 کیوآر کد (QR)</button>
+            <a href="{{ .TutorialsURL }}" target="_blank" class="btn-action btn-tutorials">📚 آموزش‌ها</a>
+            <a href="{{ .AnnouncementsURL }}" target="_blank" class="btn-action btn-news">📢 اطلاعیه‌های مهم</a>
         </div>
         
         <h3>مشخصات و مصرف پنل‌ها</h3>
@@ -95,6 +105,17 @@
         <div class="footer">سیستم تجمیع هوشمند سابسکریپشن</div>
     </div>
 
+    <div id="qrModal" class="modal">
+        <div class="modal-content">
+            <h3 style="color: #a78bfa; margin-top: 0; border: none; padding: 0; text-align: center;">اسکن برای اتصال سریع</h3>
+            <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">دوربین گوشی یا برنامه V2ray را باز کنید</p>
+            
+            <div id="qrcode-container"></div>
+            
+            <button class="btn-action btn-copy" style="width: 100%; margin-top: 10px;" onclick="closeQRModal()">بستن صفحه</button>
+        </div>
+    </div>
+
     <script>
         function copyUserLink(btn) {
             var url = window.location.href;
@@ -113,10 +134,41 @@
             btn.style.borderColor = "#10b981";
             setTimeout(() => { 
                 btn.innerText = oldText; 
-                btn.style.background = "#1f2937";
+                btn.style.background = "#1e293b";
                 btn.style.color = "#60a5fa";
                 btn.style.borderColor = "#3b82f6";
             }, 2000);
+        }
+
+        // تابع تولید و نمایش کیوآر کد
+        var qrGenerated = false;
+        function openQRModal() {
+            document.getElementById('qrModal').style.display = 'flex';
+            
+            // فقط یک بار کیوآر کد را رندر می‌کنیم تا سیستم درگیر نشود
+            if (!qrGenerated) {
+                new QRCode(document.getElementById("qrcode-container"), {
+                    text: window.location.href,
+                    width: 200,
+                    height: 200,
+                    colorDark : "#0f172a",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.M
+                });
+                qrGenerated = true;
+            }
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').style.display = 'none';
+        }
+
+        // بستن پاپ‌آپ با کلیک روی پس‌زمینه مشکی
+        window.onclick = function(event) {
+            var modal = document.getElementById('qrModal');
+            if (event.target == modal) {
+                closeQRModal();
+            }
         }
     </script>
 </body>

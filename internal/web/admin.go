@@ -1,14 +1,17 @@
 package web
 
 import (
+	"archive/zip"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -87,16 +90,15 @@ func handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 
 	for id, u := range database {
-		// 🎯 اتصال مستقیم Badge به MariaDB و موتور رادار
 		statusTxt := "🟢 Active"
-		statusCol := "#10b981" // رنگ سبز
+		statusCol := "#10b981" 
 
 		if u.Status == "disabled" {
 			statusTxt = "🔴 Disabled (Limit)"
-			statusCol = "#ef4444" // رنگ قرمز برای اتمام حجم
+			statusCol = "#ef4444"
 		} else if u.ExpireAt > 0 && u.ExpireAt < now {
 			statusTxt = "🔴 Expired (Time)"
-			statusCol = "#ef4444" // رنگ قرمز برای اتمام زمان
+			statusCol = "#ef4444"
 		}
 
 		userList = append(userList, UserItem{
@@ -233,7 +235,6 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 			automaticallyGeneratedURLs = r.Form["urls"]
 		}
 
-		// 🎯 ذخیره بهینه در SQL (فقط همین کاربر ارسال می‌شود)
 		newID := generateUUID()
 		newUser := map[string]models.User{
 			newID: {
@@ -344,14 +345,13 @@ func handleEditUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// 🎯 ذخیره در SQL: اکتیو کردن مجدد کاربر در دیتابیس لوکال
 		user.Username = newUsername
 		user.VolumeLimit = newVolumeLimit
 		user.ExpireAt = newExpireAt
 		user.URLs = cleanUrls
-		user.Status = "active" // روشن کردن مجدد از نظر رادار دیتابیس
+		user.Status = "active"
 		
-		db.SaveDB(map[string]models.User{userID: user}) // ارسال تک‌رکورد به MariaDB
+		db.SaveDB(map[string]models.User{userID: user}) 
 
 		finalMsg := strings.Join(resultMsgs, " | ")
 		redirectURL := "/admin?msg=" + url.QueryEscape(finalMsg)
@@ -377,39 +377,108 @@ func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := r.PathValue("id")
-	db.DeleteUserDB(userID) // 🎯 اجرای مستقیم کوئری DELETE روی دیتابیس MariaDB
+	db.DeleteUserDB(userID) 
 	
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
+// 🎯 تابع جدید تولید فایل زیپ بکاپ از دیتابیس MariaDB و فایل کانفیگ
 func handleBackup(w http.ResponseWriter, r *http.Request) {
 	if !checkAuth(r) {
 		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 		return
 	}
-	database, _ := db.LoadDB()
-	w.Header().Set("Content-Disposition", "attachment; filename=sub_merger_backup.json")
-	w.Header().Set("Content-Type", "application/json")
-	// خروجی استاندارد JSON برای سادگی دانلود پنل وب (همچنان کار می‌کند!)
-	json.NewEncoder(w).Encode(database)
+
+	// استخراج رمز دیتابیس
+	passBytes, err := os.ReadFile(db.DBSecretFile)
+	if err != nil {
+		http.Error(w, "Cannot read DB secret", http.StatusInternalServerError)
+		return
+	}
+	dbPass := strings.TrimSpace(string(passBytes))
+
+	// دامپ گرفتن از MariaDB
+	sqlFile := "/tmp/backup.sql"
+	cmd := exec.Command("mysqldump", "-u", "subadmin", "-p"+dbPass, "submerger")
+	outfile, err := os.Create(sqlFile)
+	if err == nil {
+		cmd.Stdout = outfile
+		cmd.Run()
+		outfile.Close()
+		defer os.Remove(sqlFile)
+	}
+
+	// ساخت فایل زیپ (ترکیب تنظیمات و دیتابیس)
+	zipPath := fmt.Sprintf("/tmp/SubMerger_Full_Backup_%d.zip", time.Now().Unix())
+	zipCmd := exec.Command("zip", "-j", zipPath, sqlFile, db.SettingsFile)
+	zipCmd.Run()
+	defer os.Remove(zipPath)
+
+	w.Header().Set("Content-Disposition", "attachment; filename=SubMerger_Full_Backup.zip")
+	w.Header().Set("Content-Type", "application/zip")
+	http.ServeFile(w, r, zipPath)
 }
 
+// 🎯 تابع جدید ریستور هوشمند فایل زیپ 
 func handleRestore(w http.ResponseWriter, r *http.Request) {
 	if !checkAuth(r) {
 		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 		return
 	}
+
 	if r.Method == http.MethodPost {
 		file, _, err := r.FormFile("backup_file")
 		if err == nil {
 			defer file.Close()
-			var database map[string]models.User
-			if err := json.NewDecoder(file).Decode(&database); err == nil {
-				db.SaveDB(database) // موتور هوشمند MariaDB به صورت خودکار تمام رکوردها را Upsert می‌کند
+			
+			// ذخیره موقت فایل آپلودی
+			tempZip := "/tmp/uploaded_restore.zip"
+			out, err := os.Create(tempZip)
+			if err == nil {
+				io.Copy(out, file)
+				out.Close()
+				defer os.Remove(tempZip)
+
+				// استخراج و بازگردانی محتویات
+				zr, err := zip.OpenReader(tempZip)
+				if err == nil {
+					defer zr.Close()
+					for _, f := range zr.File {
+						if f.Name == "backup.sql" {
+							// بازگردانی دیتابیس در MariaDB
+							rc, _ := f.Open()
+							sqlData, _ := io.ReadAll(rc)
+							rc.Close()
+							
+							sqlPath := "/tmp/restore.sql"
+							os.WriteFile(sqlPath, sqlData, 0644)
+							
+							passBytes, _ := os.ReadFile(db.DBSecretFile)
+							dbPass := strings.TrimSpace(string(passBytes))
+							
+							cmd := exec.Command("mysql", "-u", "subadmin", "-p"+dbPass, "submerger")
+							infile, _ := os.Open(sqlPath)
+							cmd.Stdin = infile
+							cmd.Run()
+							infile.Close()
+							os.Remove(sqlPath)
+						} else if f.Name == "settings.json" {
+							// بازگردانی فایل تنظیمات سیستم
+							rc, _ := f.Open()
+							settingsData, _ := io.ReadAll(rc)
+							rc.Close()
+							os.WriteFile(db.SettingsFile, settingsData, 0644)
+						}
+					}
+				}
 			}
 		}
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		
+		redirectURL := "/admin?msg=" + url.QueryEscape("✅ بکاپ با موفقیت بازگردانی شد (تنظیمات + دیتابیس)")
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		return
 	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func handleSettings(w http.ResponseWriter, r *http.Request) {

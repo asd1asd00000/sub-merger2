@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
